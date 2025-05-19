@@ -20,11 +20,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         window.decorView.postDelayed({
-            startPulse(Direction.LEFT)
+            startPulse(Direction.LEFT, 1)
         }, 1000)
     }
 
-    fun startPulse(direction: Direction) {
+    fun startPulse(direction: Direction, intensity : Int) {
         val view = when (direction) {
             Direction.LEFT   -> findViewById<View>(R.id.leftPulse)
             Direction.RIGHT  -> findViewById<View>(R.id.rightPulse)
@@ -34,8 +34,18 @@ class MainActivity : AppCompatActivity() {
 
         pulseAnimators[direction]?.cancel()
 
+        val startColor = when (intensity) {
+            0 -> ContextCompat.getColor(this, R.color.alert_gray)
+            1 -> ContextCompat.getColor(this, R.color.alert_yellow)
+            else -> ContextCompat.getColor(this, R.color.alert_red)
+        }
+        val endColor = ContextCompat.getColor(this, android.R.color.transparent)
+
         val gd = (ContextCompat.getDrawable(this, R.drawable.gradient)!!
             .mutate() as GradientDrawable).apply {
+
+            colors = intArrayOf(startColor, endColor)
+
             when (direction) {
                 Direction.LEFT   -> setGradientCenter(0f,   0.5f)
                 Direction.RIGHT  -> setGradientCenter(1f,   0.5f)
@@ -50,7 +60,7 @@ class MainActivity : AppCompatActivity() {
         view.post {
 
             val (minSize, maxSize) = if (direction == Direction.LEFT || direction == Direction.RIGHT) {
-                350f to 450f
+                350f to 400f
             } else {
                 200f to 300f
             }

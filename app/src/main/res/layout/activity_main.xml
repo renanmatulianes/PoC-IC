@@ -2,87 +2,64 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Imagem do carro -->
+    <!-- Carro no centro -->
     <ImageView
         android:id="@+id/carImg"
         android:layout_width="120dp"
         android:layout_height="245dp"
         android:contentDescription="@string/desc_img_carro"
+        android:src="@drawable/car"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:src="@drawable/car" />
+        app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Sensor ESQUERDO -->
-
+    <!-- Pulso ESQUERDA -->
     <View
-        android:id="@+id/gradientCard"
-        android:layout_width="0dp"
-        android:layout_height="150dp"
+        android:id="@+id/leftPulse"
+        android:layout_width="450dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
         android:background="@drawable/gradient"
-        tools:layout_editor_absoluteX="0dp"
-        tools:layout_editor_absoluteY="0dp" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <ImageView
-        android:id="@+id/leftSensorImg"
-        android:layout_width="98dp"
-        android:layout_height="147dp"
-        android:layout_marginEnd="-15dp"
+    <!-- Pulso DIREITA -->
+    <View
+        android:id="@+id/rightPulse"
+        android:layout_width="450dp"
+        android:layout_height="0dp"
         android:visibility="gone"
-        android:src="@drawable/vector_1"
-        app:tint="@color/sensor_off"
-        app:layout_constraintTop_toTopOf="@id/carImg"
-        app:layout_constraintBottom_toBottomOf="@id/carImg"
-        app:layout_constraintEnd_toStartOf="@id/carImg" />
+        android:background="@drawable/gradient"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <!-- Sensor DIREITO -->
-    <ImageView
-        android:id="@+id/rightSensorImg"
-        android:layout_width="98dp"
-        android:layout_height="147dp"
-        android:layout_marginStart="-15dp"
-        android:rotation="180"
+    <!-- Pulso TOPO -->
+    <View
+        android:id="@+id/topPulse"
+        android:layout_width="0dp"
+        android:layout_height="1200dp"
         android:visibility="gone"
-        android:src="@drawable/vector_1"
-        app:tint="@color/sensor_off"
-        app:layout_constraintTop_toTopOf="@id/carImg"
-        app:layout_constraintBottom_toBottomOf="@id/carImg"
-        app:layout_constraintStart_toEndOf="@id/carImg" />
+        android:background="@drawable/gradient"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- Sensor CIMA -->
-    <ImageView
-        android:id="@+id/topSensorImg"
-        android:layout_width="147dp"
-        android:layout_height="98dp"
-        android:layout_marginBottom="-20dp"
+    <!-- Pulso BAIXO -->
+    <View
+        android:id="@+id/bottomPulse"
+        android:layout_width="0dp"
+        android:layout_height="450dp"
         android:visibility="gone"
-        android:src="@drawable/vector_2"
-        app:tint="@color/sensor_off"
-        app:layout_constraintBottom_toTopOf="@id/carImg"
-        app:layout_constraintStart_toStartOf="@id/carImg"
-        app:layout_constraintEnd_toEndOf="@id/carImg" />
-
-    <!-- Sensor BAIXO -->
-    <ImageView
-        android:id="@+id/bottomSensorImg"
-        android:layout_width="147dp"
-        android:layout_height="98dp"
-        android:layout_marginTop="-20dp"
-        android:rotation="180"
-        android:visibility="gone"
-        android:src="@drawable/vector_2"
-        app:tint="@color/sensor_off"
-        app:layout_constraintTop_toBottomOf="@id/carImg"
-        app:layout_constraintStart_toStartOf="@id/carImg"
-        app:layout_constraintEnd_toEndOf="@id/carImg" />
-
-
-
+        android:background="@drawable/gradient"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

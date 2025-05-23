@@ -25,9 +25,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         window.decorView.postDelayed({
-            startPulse(Direction.RIGHT, 0)
+            startPulse(Direction.RIGHT, 2)
             startArrowBlink(Direction.RIGHT)
-            showObject(Direction.RIGHT, Objects.HUMAN)
+            showObject(Direction.RIGHT, Objects.BIKE)
 
         }, 1000)
     }
@@ -166,7 +166,7 @@ class MainActivity : AppCompatActivity() {
         val resId = when (incomingObject) {
             Objects.VEHICLE     -> R.drawable.pedestrian
             Objects.MOTORCYCLE  -> R.drawable.pedestrian
-            Objects.BIKE        -> R.drawable.pedestrian
+            Objects.BIKE        -> R.drawable.cyclist
             Objects.HUMAN       -> R.drawable.pedestrian
         }
 

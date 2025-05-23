@@ -1,26 +1,34 @@
 package com.example.app
 
 import android.animation.ValueAnimator
+import android.graphics.drawable.AnimatedVectorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.View
 import android.view.animation.LinearInterpolator
+import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.vectordrawable.graphics.drawable.AnimatedVectorDrawableCompat
 import kotlin.math.hypot
 
 enum class Direction { LEFT, RIGHT, TOP, BOTTOM }
+enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE}
 
 class MainActivity : AppCompatActivity() {
 
     private val pulseAnimators = mutableMapOf<Direction, ValueAnimator>()
+    private val arrowAnimators = mutableMapOf<Direction, ValueAnimator>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         window.decorView.postDelayed({
-            startPulse(Direction.LEFT, 1)
+            startPulse(Direction.RIGHT, 0)
+            startArrowBlink(Direction.RIGHT)
+            showObject(Direction.RIGHT, Objects.HUMAN)
+
         }, 1000)
     }
 
@@ -92,5 +100,88 @@ class MainActivity : AppCompatActivity() {
             Direction.BOTTOM -> findViewById<View>(R.id.bottomPulse)
         }
         view.visibility = View.GONE
+    }
+
+    fun startArrowBlink(direction: Direction) {
+        val arrowView = when (direction) {
+            Direction.LEFT   -> findViewById<ImageView>(R.id.leftArrow)
+            Direction.RIGHT  -> findViewById<ImageView>(R.id.rightArrow)
+            Direction.TOP    -> findViewById<ImageView>(R.id.topArrow)
+            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomArrow)
+        }
+
+        arrowView.apply {
+            when (direction) {
+                Direction.LEFT   -> scaleX = -1f
+                Direction.RIGHT  -> scaleX = 1f
+                Direction.TOP    -> {
+                    scaleX = 1f
+                    rotation = -90f
+                }
+                Direction.BOTTOM -> {
+                    scaleX = 1f
+                    rotation = 90f
+                }
+            }
+            alpha = 0f
+            visibility = View.VISIBLE
+        }
+
+        arrowAnimators[direction]?.cancel()
+
+        val anim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 400L
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = LinearInterpolator()
+            addUpdateListener { va ->
+                arrowView.alpha = va.animatedValue as Float
+            }
+            start()
+        }
+        arrowAnimators[direction] = anim
+    }
+
+    fun stopArrowBlink(direction: Direction) {
+        arrowAnimators[direction]?.cancel()
+        arrowAnimators.remove(direction)
+        val arrowView = when (direction) {
+            Direction.LEFT   -> findViewById<ImageView>(R.id.leftArrow)
+            Direction.RIGHT  -> findViewById<ImageView>(R.id.rightArrow)
+            Direction.TOP    -> findViewById<ImageView>(R.id.topArrow)
+            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomArrow)
+        }
+        arrowView.visibility = View.GONE
+    }
+
+    fun showObject(direction: Direction, incomingObject : Objects){
+
+        val objectView = when (direction) {
+            Direction.LEFT   -> findViewById<ImageView>(R.id.leftObject)
+            Direction.RIGHT  -> findViewById<ImageView>(R.id.rightObject)
+            Direction.TOP    -> findViewById<ImageView>(R.id.topObject)
+            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomObject)
+        }
+
+        val resId = when (incomingObject) {
+            Objects.VEHICLE     -> R.drawable.pedestrian
+            Objects.MOTORCYCLE  -> R.drawable.pedestrian
+            Objects.BIKE        -> R.drawable.pedestrian
+            Objects.HUMAN       -> R.drawable.pedestrian
+        }
+
+        objectView.apply {
+            setImageResource(resId)
+            elevation = 6f
+            bringToFront()
+            alpha = 0f
+            visibility = View.VISIBLE
+            animate().alpha(1f).setDuration(250).start()
+
+            when (direction) {
+                Direction.RIGHT  -> scaleX = -1f
+                else -> {}
+            }
+        }
     }
 }

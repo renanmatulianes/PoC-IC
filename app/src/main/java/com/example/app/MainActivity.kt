@@ -9,8 +9,6 @@ import android.view.animation.LinearInterpolator
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.vectordrawable.graphics.drawable.AnimatedVectorDrawableCompat
-import kotlin.math.hypot
 
 enum class Direction { LEFT, RIGHT, TOP, BOTTOM }
 enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE}
@@ -27,7 +25,7 @@ class MainActivity : AppCompatActivity() {
         window.decorView.postDelayed({
             startPulse(Direction.RIGHT, 2)
             startArrowBlink(Direction.RIGHT)
-            showObject(Direction.RIGHT, Objects.BIKE)
+            showObject(Direction.RIGHT, Objects.HUMAN)
 
         }, 1000)
     }

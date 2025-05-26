@@ -27,7 +27,8 @@
         android:contentDescription="@string/desc_incoming_object"
         app:layout_constraintStart_toStartOf="@id/leftPulse"
         app:layout_constraintTop_toTopOf="@id/leftPulse"
-        app:layout_constraintBottom_toBottomOf="@id/leftPulse"/>
+        app:layout_constraintBottom_toBottomOf="@id/leftPulse"
+        android:layout_marginStart="24dp"/>
 
     <!-- Objeto DIREITA -->
     <ImageView
@@ -38,7 +39,8 @@
         android:contentDescription="@string/desc_incoming_object"
         app:layout_constraintEnd_toEndOf="@id/rightPulse"
         app:layout_constraintTop_toTopOf="@id/rightPulse"
-        app:layout_constraintBottom_toBottomOf="@id/rightPulse"/>
+        app:layout_constraintBottom_toBottomOf="@id/rightPulse"
+        android:layout_marginEnd="24dp"/>
 
     <!-- Objeto TOPO -->
     <ImageView
@@ -66,8 +68,8 @@
     <!-- Seta à esquerda -->
     <ImageView
         android:id="@+id/leftArrow"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:visibility="gone"
         android:src="@drawable/alert_cone"
         app:layout_constraintEnd_toStartOf="@id/carImg"
@@ -78,8 +80,8 @@
     <!-- Seta à direita -->
     <ImageView
         android:id="@+id/rightArrow"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:visibility="gone"
         android:src="@drawable/alert_cone"
         app:layout_constraintStart_toEndOf="@id/carImg"
@@ -90,8 +92,8 @@
     <!-- Seta em cima -->
     <ImageView
         android:id="@+id/topArrow"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:visibility="gone"
         android:src="@drawable/alert_cone"
         app:layout_constraintBottom_toTopOf="@id/carImg"
@@ -102,8 +104,8 @@
     <!-- Seta embaixo -->
     <ImageView
         android:id="@+id/bottomArrow"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:visibility="gone"
         android:src="@drawable/alert_cone"
         app:layout_constraintTop_toBottomOf="@id/carImg"

@@ -23,9 +23,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         window.decorView.postDelayed({
-            startPulse(Direction.RIGHT, 2)
-            startArrowBlink(Direction.RIGHT)
-            showObject(Direction.RIGHT, Objects.HUMAN)
+            startPulse(Direction.LEFT, 0)
+            startArrowBlink(Direction.LEFT)
+            showObject(Direction.LEFT, Objects.BIKE)
 
         }, 1000)
     }

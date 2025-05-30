@@ -18,10 +18,10 @@ class RegisterActivity : AppCompatActivity() {
 
         prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
 
-//        if (prefs.contains("plate")) {
-//            goToRadar()
-//            return
-//        }
+        if (prefs.contains("plate")) {
+            goToRadar()
+            return
+        }
 
         setContentView(R.layout.activity_register)
 

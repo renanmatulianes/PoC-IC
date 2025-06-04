@@ -1,4 +1,4 @@
-package com.example.app                    // ajuste para o seu package
+package com.example.app
 
 import android.content.Intent
 import android.content.SharedPreferences

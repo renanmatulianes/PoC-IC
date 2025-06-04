@@ -1,6 +1,8 @@
 package com.example.app
 
 import android.animation.ValueAnimator
+import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.drawable.AnimatedVectorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -11,7 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
 enum class Direction { LEFT, RIGHT, TOP, BOTTOM }
-enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE}
+enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE, NULL}
 
 class MainActivity : AppCompatActivity() {
 
@@ -22,12 +24,68 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
+
+        val visualOn   = prefs.getBoolean("notif_visual", true)
+        val vibracaoOn = prefs.getBoolean("notif_vibracao", true)
+        val sonoraOn   = prefs.getBoolean("notif_sonora", true)
+        val ignoreLow = prefs.getBoolean("ignore-low-risk", false)
+        val ignoreMid = prefs.getBoolean("ignore-mid-risk", false)
+        val ignoreHigh = prefs.getBoolean("ignore-high-risk", false)
+
         window.decorView.postDelayed({
-            startPulse(Direction.LEFT, 0)
-            startArrowBlink(Direction.LEFT)
-            showObject(Direction.LEFT, Objects.BIKE)
+            if (visualOn)
+                notifyVisual(Direction.BOTTOM, 2, Objects.MOTORCYCLE)
+
+            if (sonoraOn)
+                SoundManager.playSound(this, Direction.BOTTOM, Objects.MOTORCYCLE, 2)
 
         }, 1000)
+
+        val settingsButton = findViewById<ImageView>(R.id.settingsIcon)
+        settingsButton.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+    }
+
+    fun notifyVisual(direction: Direction, intensity: Int, incomingObject: Objects){
+        val carImg = findViewById<ImageView>(R.id.carImg)
+
+        if (direction == Direction.TOP && (incomingObject != Objects.NULL || intensity != -1)){
+            val arrowTopImg = findViewById<ImageView>(R.id.topArrow)
+
+            carImg.apply {
+                translationY = 150f
+            }
+
+            arrowTopImg.apply {
+                translationY = 150f
+            }
+        }
+        else if (direction == Direction.BOTTOM && (incomingObject != Objects.NULL || intensity != -1)) {
+            val arrowBottomImg = findViewById<ImageView>(R.id.bottomArrow)
+
+            carImg.apply {
+                translationY = -150f
+            }
+
+            arrowBottomImg.apply {
+                translationY = -150f
+            }
+        }
+
+        startArrowBlink(direction, intensity)
+
+        if (intensity != -1)
+            startPulse(direction, intensity)
+
+        if (incomingObject != Objects.NULL)
+            showObject(direction, incomingObject)
+
+        val settingsIconImg = findViewById<ImageView>(R.id.settingsIcon)
+        settingsIconImg.apply {
+            visibility = View.GONE
+        }
     }
 
     fun startPulse(direction: Direction, intensity : Int) {
@@ -71,8 +129,17 @@ class MainActivity : AppCompatActivity() {
                 200f to 300f
             }
 
+            val animTime : Long
+
+            when (intensity) {
+                0 -> animTime = 800L
+                1 -> animTime = 600L
+                2 -> animTime = 400L
+                else -> animTime = 800L
+            }
+
             val anim = ValueAnimator.ofFloat(minSize, maxSize).apply {
-                duration = 800L
+                duration = animTime
                 repeatMode = ValueAnimator.REVERSE
                 repeatCount = ValueAnimator.INFINITE
                 interpolator = LinearInterpolator()
@@ -100,7 +167,7 @@ class MainActivity : AppCompatActivity() {
         view.visibility = View.GONE
     }
 
-    fun startArrowBlink(direction: Direction) {
+    fun startArrowBlink(direction: Direction, intensity: Int) {
         val arrowView = when (direction) {
             Direction.LEFT   -> findViewById<ImageView>(R.id.leftArrow)
             Direction.RIGHT  -> findViewById<ImageView>(R.id.rightArrow)
@@ -127,8 +194,17 @@ class MainActivity : AppCompatActivity() {
 
         arrowAnimators[direction]?.cancel()
 
+        val animDuration : Long
+
+        when (intensity) {
+            0 -> animDuration = 400L
+            1 -> animDuration = 300L
+            2 -> animDuration = 200L
+            else -> animDuration = 400L
+        }
+
         val anim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 400L
+            duration = animDuration
             repeatMode = ValueAnimator.REVERSE
             repeatCount = ValueAnimator.INFINITE
             interpolator = LinearInterpolator()
@@ -162,10 +238,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         val resId = when (incomingObject) {
-            Objects.VEHICLE     -> R.drawable.pedestrian
-            Objects.MOTORCYCLE  -> R.drawable.pedestrian
+            Objects.VEHICLE     -> R.drawable.vehicle_icon
+            Objects.MOTORCYCLE  -> R.drawable.motorcycle
             Objects.BIKE        -> R.drawable.cyclist
             Objects.HUMAN       -> R.drawable.pedestrian
+            else                -> 0
         }
 
         objectView.apply {

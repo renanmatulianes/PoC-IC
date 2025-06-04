@@ -7,4 +7,5 @@
     <color name="gradientEnd">#FFFFFFFF</color>
     <color name="alert_gray">#808080</color>
     <color name="alert_yellow">#FFE900</color>
+    <color name="divider">#4B4845</color>
 </resources>

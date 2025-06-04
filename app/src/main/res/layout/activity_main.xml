@@ -2,6 +2,7 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -45,25 +46,25 @@
     <!-- Objeto TOPO -->
     <ImageView
         android:id="@+id/topObject"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
         android:visibility="gone"
         android:contentDescription="@string/desc_incoming_object"
         app:layout_constraintStart_toStartOf="@id/topPulse"
         app:layout_constraintEnd_toEndOf="@id/topPulse"
         app:layout_constraintTop_toTopOf="@id/topPulse"
-        app:layout_constraintBottom_toBottomOf="@id/topPulse"/>
+        android:layout_marginTop="24dp"/>
 
     <!-- Objeto BAIXO -->
     <ImageView
         android:id="@+id/bottomObject"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
         android:visibility="gone"
         app:layout_constraintStart_toStartOf="@id/bottomPulse"
         app:layout_constraintEnd_toEndOf="@id/bottomPulse"
-        app:layout_constraintTop_toTopOf="@id/bottomPulse"
-        app:layout_constraintBottom_toBottomOf="@id/bottomPulse"/>
+        app:layout_constraintBottom_toBottomOf="@id/bottomPulse"
+        android:layout_marginBottom="24dp"/>
 
     <!-- Seta à esquerda -->
     <ImageView
@@ -156,5 +157,13 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <ImageView
+        android:id="@+id/settingsIcon"
+        android:layout_width="52dp"
+        android:layout_height="62dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:srcCompat="@drawable/settings" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

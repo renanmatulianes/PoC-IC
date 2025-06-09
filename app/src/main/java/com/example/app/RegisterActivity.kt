@@ -6,8 +6,14 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.textfield.TextInputEditText
 import androidx.core.content.edit
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.textfield.TextInputEditText
+import com.example.app.model.RegisterRequest
+import com.example.app.network.ApiClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class RegisterActivity : AppCompatActivity() {
 
@@ -18,10 +24,11 @@ class RegisterActivity : AppCompatActivity() {
 
         prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
 
-        if (prefs.contains("plate")) {
-            goToRadar()
-            return
-        }
+        // Já existe usuário cadastrado? pula tela
+//        if (prefs.contains("userId")) {
+//            goToRadar()
+//            return
+//        }
 
         setContentView(R.layout.activity_register)
 
@@ -32,24 +39,56 @@ class RegisterActivity : AppCompatActivity() {
         val btnReg  = findViewById<Button>(R.id.btnRegister)
 
         btnReg.setOnClickListener {
+
+            // ---------- validação ----------
             val name  = etName.text?.toString()?.trim().orEmpty()
             val model = etModel.text?.toString()?.trim().orEmpty()
             val year  = etYear.text?.toString()?.trim().orEmpty()
             val plate = etPlate.text?.toString()?.trim().orEmpty()
 
-            if (name.isBlank() || model.isBlank() || year.isBlank() || plate.isBlank()) {
+            if (listOf(name, model, year, plate).any { it.isBlank() }) {
                 Toast.makeText(this, "Preencha todos os campos", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            prefs.edit {
-                putString("name", name)
-                putString("model", model)
-                putString("year", year)
-                putString("plate", plate)
-            }
+            // ---------- chamada HTTP ----------
+            lifecycleScope.launch {
+                try {
+                    val body = RegisterRequest(
+                        name  = name,
+                        model = model,
+                        year  = year.toInt(),
+                        plate = plate
+                    )
 
-            goToRadar()
+                    val user = withContext(Dispatchers.IO) {
+                        ApiClient.api.register(body)
+                    }
+
+                    // ---------- persiste localmente ----------
+                    prefs.edit {
+                        putInt("userId", user.id)
+                        putString("name", name)
+                        putString("model", model)
+                        putString("year", year)
+                        putString("plate", plate)
+                    }
+
+                    goToRadar()
+
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        this@RegisterActivity,
+                        "Erro no cadastro: ${e.localizedMessage}",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    // LOG COMPLETO (adicionado)
+                    e.printStackTrace()                 // aparece na aba "Run" e Logcat
+
+                }
+
+            }
         }
     }
 

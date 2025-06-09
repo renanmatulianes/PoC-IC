@@ -12,13 +12,17 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var prefs: SharedPreferences
 
-    private lateinit var switchVisual: SwitchMaterial
-    private lateinit var switchVibracao: SwitchMaterial
-    private lateinit var switchSonora: SwitchMaterial
+    private lateinit var switchVisualAlto: SwitchMaterial
+    private lateinit var switchVibracaoAlto: SwitchMaterial
+    private lateinit var switchSonoraAlto: SwitchMaterial
 
-    private lateinit var lowRiskButton : MaterialButton
-    private lateinit var midRiskButton : MaterialButton
-    private lateinit var highRiskButton : MaterialButton
+    private lateinit var switchVisualMedio: SwitchMaterial
+    private lateinit var switchVibracaoMedio: SwitchMaterial
+    private lateinit var switchSonoraMedio: SwitchMaterial
+
+    private lateinit var switchVisualBaixo: SwitchMaterial
+    private lateinit var switchVibracaoBaixo: SwitchMaterial
+    private lateinit var switchSonoraBaixo: SwitchMaterial
 
     private lateinit var saveButton: Button
 
@@ -29,13 +33,17 @@ class SettingsActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_settings)
 
-        switchVisual    = findViewById(R.id.switchVisual)
-        switchVibracao  = findViewById(R.id.switchVibracao)
-        switchSonora    = findViewById(R.id.switchSonora)
+        switchVisualAlto    = findViewById(R.id.switchVisualAlto)
+        switchVibracaoAlto  = findViewById(R.id.switchVibracaoAlto)
+        switchSonoraAlto    = findViewById(R.id.switchSonoraAlto)
 
-        lowRiskButton = findViewById(R.id.btnLevelBaixo)
-        midRiskButton = findViewById(R.id.btnLevelMedio)
-        highRiskButton = findViewById(R.id.btnLevelAlto)
+        switchVisualMedio    = findViewById(R.id.switchVisualMedio)
+        switchVibracaoMedio  = findViewById(R.id.switchVibracaoMedio)
+        switchSonoraMedio    = findViewById(R.id.switchSonoraMedio)
+
+        switchVisualBaixo    = findViewById(R.id.switchVisualBaixo)
+        switchVibracaoBaixo  = findViewById(R.id.switchVibracaoBaixo)
+        switchSonoraBaixo    = findViewById(R.id.switchSonoraBaixo)
 
         saveButton      = findViewById(R.id.btnSaveSettings)
 
@@ -43,12 +51,17 @@ class SettingsActivity : AppCompatActivity() {
 
         saveButton.setOnClickListener {
             prefs.edit {
-                putBoolean("notif_visual", switchVisual.isChecked)
-                putBoolean("notif_vibracao", switchVibracao.isChecked)
-                putBoolean("notif_sonora", switchSonora.isChecked)
-                putBoolean("ignore-low-risk" ,lowRiskButton.isChecked)
-                putBoolean("ignore-mid-risk" ,midRiskButton.isChecked)
-                putBoolean("ignore-high-risk" ,highRiskButton.isChecked)
+                putBoolean("notif_visual-alto", switchVisualAlto.isChecked)
+                putBoolean("notif_vibracao-alto", switchVibracaoAlto.isChecked)
+                putBoolean("notif_sonora-alto", switchSonoraAlto.isChecked)
+
+                putBoolean("notif_visual-medio", switchVisualMedio.isChecked)
+                putBoolean("notif_vibracao-medio", switchVibracaoMedio.isChecked)
+                putBoolean("notif_sonora-medio", switchSonoraMedio.isChecked)
+
+                putBoolean("notif_visual-baixo", switchVisualBaixo.isChecked)
+                putBoolean("notif_vibracao-baixo", switchVibracaoBaixo.isChecked)
+                putBoolean("notif_sonora-baixo", switchSonoraBaixo.isChecked)
             }
 
             finish()
@@ -56,18 +69,28 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun loadPreferences() {
-        val visualOn   = prefs.getBoolean("notif_visual", true)
-        val vibracaoOn = prefs.getBoolean("notif_vibracao", true)
-        val sonoraOn   = prefs.getBoolean("notif_sonora", true)
-        val ignoreLow = prefs.getBoolean("ignore-low-risk", false)
-        val ignoreMid = prefs.getBoolean("ignore-mid-risk", false)
-        val ignoreHigh = prefs.getBoolean("ignore-high-risk", false)
+        val visualAltoOn   = prefs.getBoolean("notif_visual-alto", true)
+        val vibracaoAltoOn = prefs.getBoolean("notif_vibracao-alto", true)
+        val sonoraAltoOn   = prefs.getBoolean("notif_sonora-alto", true)
 
-        switchVisual.isChecked   = visualOn
-        switchVibracao.isChecked = vibracaoOn
-        switchSonora.isChecked   = sonoraOn
-        lowRiskButton.isChecked = ignoreLow
-        midRiskButton.isChecked = ignoreMid
-        highRiskButton.isChecked = ignoreHigh
+        val visualMedioOn   = prefs.getBoolean("notif_visual-medio", true)
+        val vibracaoMedioOn = prefs.getBoolean("notif_vibracao-medio", true)
+        val sonoraMedioOn   = prefs.getBoolean("notif_sonora-medio", true)
+
+        val visualBaixoOn   = prefs.getBoolean("notif_visual-baixo", true)
+        val vibracaoBaixoOn = prefs.getBoolean("notif_vibracao-baixo", true)
+        val sonoraBaixoOn   = prefs.getBoolean("notif_sonora-baixo", true)
+
+        switchVisualAlto.isChecked   = visualAltoOn
+        switchVibracaoAlto.isChecked = vibracaoAltoOn
+        switchSonoraAlto.isChecked   = sonoraAltoOn
+
+        switchVisualMedio.isChecked   = visualMedioOn
+        switchVibracaoMedio.isChecked = vibracaoMedioOn
+        switchSonoraMedio.isChecked   = sonoraMedioOn
+
+        switchVisualBaixo.isChecked   = visualBaixoOn
+        switchVibracaoBaixo.isChecked = vibracaoBaixoOn
+        switchSonoraBaixo.isChecked   = sonoraBaixoOn
     }
 }

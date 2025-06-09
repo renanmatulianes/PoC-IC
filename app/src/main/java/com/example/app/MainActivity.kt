@@ -29,16 +29,13 @@ class MainActivity : AppCompatActivity() {
         val visualOn   = prefs.getBoolean("notif_visual", true)
         val vibracaoOn = prefs.getBoolean("notif_vibracao", true)
         val sonoraOn   = prefs.getBoolean("notif_sonora", true)
-        val ignoreLow = prefs.getBoolean("ignore-low-risk", false)
-        val ignoreMid = prefs.getBoolean("ignore-mid-risk", false)
-        val ignoreHigh = prefs.getBoolean("ignore-high-risk", false)
 
         window.decorView.postDelayed({
-            if (visualOn)
-                notifyVisual(Direction.BOTTOM, 2, Objects.MOTORCYCLE)
-
-            if (sonoraOn)
-                SoundManager.playSound(this, Direction.BOTTOM, Objects.MOTORCYCLE, 2)
+//            if (visualOn)
+//                notifyVisual(Direction.BOTTOM, 2, Objects.MOTORCYCLE)
+//
+//            if (sonoraOn)
+//                SoundManager.playSound(this, Direction.BOTTOM, Objects.MOTORCYCLE, 2)
 
         }, 1000)
 

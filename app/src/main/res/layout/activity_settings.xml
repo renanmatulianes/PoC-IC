@@ -11,17 +11,19 @@
         android:id="@+id/tvSettingsTitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Ativar/Desativar tipos de notificação"
+        android:text="Notificações por Nível de Risco"
         android:textAppearance="?attr/textAppearanceHeadline6"
         android:textAlignment="center"
         android:textColor="@color/black"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/cardNotificationMatrix"
+        app:layout_constraintVertical_chainStyle="packed" />
 
-    <!-- Cartão 1: Switches para Visual, Vibração e Sonora -->
+    <!-- Card: Matriz de notificações -->
     <com.google.android.material.card.MaterialCardView
-        android:id="@+id/cardNotifications"
+        android:id="@+id/cardNotificationMatrix"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
@@ -29,7 +31,8 @@
         app:cardCornerRadius="8dp"
         app:layout_constraintTop_toBottomOf="@id/tvSettingsTitle"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/btnSaveSettings">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -37,7 +40,55 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Switch: NOTIF VISUAL -->
+            <!-- Cabeçalho da matriz (altura fixa e alinhamento vertical) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <!-- Espaço reservado para ícone -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="" />
+
+                <!-- Label Baixo -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="32dp"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="Baixo"
+                    android:textAppearance="?attr/textAppearanceBody2"
+                    android:textColor="@color/black" />
+
+                <!-- Label Médio -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="42dp"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="Médio"
+                    android:textAppearance="?attr/textAppearanceBody2"
+                    android:textColor="@color/black" />
+
+                <!-- Label Alto -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="Alto"
+                    android:textAppearance="?attr/textAppearanceBody2"
+                    android:textColor="@color/black" />
+
+            </LinearLayout>
+
+            <!-- Linha: Notificação Visual -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
@@ -50,7 +101,7 @@
                     android:layout_height="24dp"
                     android:contentDescription="Visual"
                     android:src="@drawable/eye_icon"
-                app:tint="@color/black"/>
+                    app:tint="@color/black" />
 
                 <TextView
                     android:id="@+id/tvLabelVisual"
@@ -60,35 +111,48 @@
                     android:layout_weight="1"
                     android:text="Visual"
                     android:textAppearance="?attr/textAppearanceBody1"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/switchVisual"
+                    android:id="@+id/switchVisualBaixo"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:checked="true"/>
+                    android:checked="true" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchVisualMedio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="24dp"
+                    android:checked="true" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchVisualAlto"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="24dp"
+                    android:checked="true" />
             </LinearLayout>
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:layout_marginTop="4dp"
-                android:background="@color/divider"/>
+                android:layout_marginVertical="4dp"
+                android:background="@color/divider" />
 
-            <!-- Switch: NOTIF VIBRAÇÃO -->
+            <!-- Linha: Notificação Vibração -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="4dp">
+                android:gravity="center_vertical">
 
                 <ImageView
                     android:id="@+id/ivIconVibracao"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/vibration_icon"
-                    app:tint="@color/black"/>
+                    app:tint="@color/black" />
 
                 <TextView
                     android:id="@+id/tvLabelVibracao"
@@ -98,35 +162,48 @@
                     android:layout_weight="1"
                     android:text="Vibração"
                     android:textAppearance="?attr/textAppearanceBody1"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/switchVibracao"
+                    android:id="@+id/switchVibracaoBaixo"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:checked="true"/>
+                    android:checked="true" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchVibracaoMedio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="24dp"
+                    android:checked="true" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchVibracaoAlto"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="24dp"
+                    android:checked="true" />
             </LinearLayout>
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:layout_marginTop="4dp"
-                android:background="@color/divider"/>
+                android:layout_marginVertical="4dp"
+                android:background="@color/divider" />
 
-            <!-- Switch: NOTIF SONORA -->
+            <!-- Linha: Notificação Sonora -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="4dp">
+                android:gravity="center_vertical">
 
                 <ImageView
                     android:id="@+id/ivIconSonora"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/sound_icon"
-                    app:tint="@color/black"/>
+                    app:tint="@color/black" />
 
                 <TextView
                     android:id="@+id/tvLabelSonora"
@@ -136,89 +213,29 @@
                     android:layout_weight="1"
                     android:text="Sonora"
                     android:textAppearance="?attr/textAppearanceBody1"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/switchSonora"
+                    android:id="@+id/switchSonoraBaixo"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:checked="true"/>
+                    android:checked="true" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchSonoraMedio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="24dp"
+                    android:checked="true" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchSonoraAlto"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="24dp"
+                    android:checked="true" />
             </LinearLayout>
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
 
-
-    <!-- Texto auxiliar: “Ignorar alertas para risco de colisão:” -->
-    <TextView
-        android:id="@+id/tvIgnoreTitle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Ignorar alertas para risco de colisão:"
-        android:textAppearance="?attr/textAppearanceHeadline6"
-        android:layout_marginTop="24dp"
-        android:textColor="@color/black"
-
-        android:textAlignment="center"
-
-        app:layout_constraintTop_toBottomOf="@id/cardNotifications"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
-
-    <!-- Botões segmentados para Baixo / Médio / Alto -->
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/cardIgnoreLevels"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        app:cardElevation="4dp"
-        app:cardCornerRadius="8dp"
-        app:layout_constraintTop_toBottomOf="@id/tvIgnoreTitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:gravity="center_horizontal">
-
-            <!-- Botão segmentado: Baixo / Médio / Alto -->
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/toggleGroupLevels"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginBottom="8dp"
-                app:singleSelection="false"
-                app:selectionRequired="false"
-                android:backgroundTint="@color/white"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintEnd_toEndOf="parent">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnLevelBaixo"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="match_parent"
-                    android:text="Baixo"/>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnLevelMedio"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="match_parent"
-                    android:text="Médio"/>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnLevelAlto"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="match_parent"
-                    android:text="Alto"/>
-            </com.google.android.material.button.MaterialButtonToggleGroup>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
@@ -229,8 +246,9 @@
         android:layout_height="48dp"
         android:text="Salvar"
         android:layout_marginTop="24dp"
-        app:layout_constraintTop_toBottomOf="@id/cardIgnoreLevels"
+        app:layout_constraintTop_toBottomOf="@id/cardNotificationMatrix"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,9 +1,15 @@
 package com.example.app.model
 
 data class Notification(
-    val event_id: String,
-    val timestamp: String,
-    val location: Location
+    val pedestrian_data: Pedestrian?,
+    val driver_data: Driver?
 ) {
-    data class Location(val latitude: Double, val longitude: Double)
+    data class Pedestrian(
+        val risk_level: String,
+        val object_direction: String   // "left" | "right" | "top" | "bottom"
+    )
+    data class Driver(
+        val risk_level: String,
+        val object_direction: String
+    )
 }

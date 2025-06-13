@@ -9,10 +9,19 @@ import android.os.Bundle
 import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.ImageView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.example.app.model.Notification
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 
-enum class Direction { LEFT, RIGHT, TOP, BOTTOM }
+enum class Direction { LEFT, RIGHT, TOP, BOTTOM, NULL}
 enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE, NULL}
 
 class MainActivity : AppCompatActivity() {
@@ -20,11 +29,25 @@ class MainActivity : AppCompatActivity() {
     private val pulseAnimators = mutableMapOf<Direction, ValueAnimator>()
     private val arrowAnimators = mutableMapOf<Direction, ValueAnimator>()
 
+    private var mostRecentDirection : Direction = Direction.NULL
+
+    private lateinit var socket: WebSocket
+    private val moshi  = Moshi.Builder()
+        .addLast(KotlinJsonAdapterFactory())
+        .build()
+    private val notifAdapter = moshi.adapter(Notification::class.java)
+
+    private val serverIp = "10.0.2.2"      // em celular real → "192.168.0.50"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
+
+        val userId = prefs.getInt("userId", -1)
+
+        if (userId != -1) connectSocket(userId)
 
         val visualOn   = prefs.getBoolean("notif_visual", true)
         val vibracaoOn = prefs.getBoolean("notif_vibracao", true)
@@ -91,6 +114,7 @@ class MainActivity : AppCompatActivity() {
             Direction.RIGHT  -> findViewById<View>(R.id.rightPulse)
             Direction.TOP    -> findViewById<View>(R.id.topPulse)
             Direction.BOTTOM -> findViewById<View>(R.id.bottomPulse)
+            Direction.NULL -> findViewById<View>(R.id.bottomPulse)
         }
 
         pulseAnimators[direction]?.cancel()
@@ -112,6 +136,7 @@ class MainActivity : AppCompatActivity() {
                 Direction.RIGHT  -> setGradientCenter(1f,   0.5f)
                 Direction.TOP    -> setGradientCenter(0.5f, 0f)
                 Direction.BOTTOM -> setGradientCenter(0.5f, 1f)
+                else -> setGradientCenter(0.5f, 1f)
             }
         }
 
@@ -160,6 +185,7 @@ class MainActivity : AppCompatActivity() {
             Direction.RIGHT  -> findViewById<View>(R.id.rightPulse)
             Direction.TOP    -> findViewById<View>(R.id.topPulse)
             Direction.BOTTOM -> findViewById<View>(R.id.bottomPulse)
+            else -> findViewById<View>(R.id.bottomPulse)
         }
         view.visibility = View.GONE
     }
@@ -170,6 +196,7 @@ class MainActivity : AppCompatActivity() {
             Direction.RIGHT  -> findViewById<ImageView>(R.id.rightArrow)
             Direction.TOP    -> findViewById<ImageView>(R.id.topArrow)
             Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomArrow)
+            else -> findViewById<ImageView>(R.id.bottomArrow)
         }
 
         arrowView.apply {
@@ -184,6 +211,7 @@ class MainActivity : AppCompatActivity() {
                     scaleX = 1f
                     rotation = 90f
                 }
+                else -> {}
             }
             alpha = 0f
             visibility = View.VISIBLE
@@ -221,6 +249,7 @@ class MainActivity : AppCompatActivity() {
             Direction.RIGHT  -> findViewById<ImageView>(R.id.rightArrow)
             Direction.TOP    -> findViewById<ImageView>(R.id.topArrow)
             Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomArrow)
+            else -> findViewById<ImageView>(R.id.bottomArrow)
         }
         arrowView.visibility = View.GONE
     }
@@ -232,6 +261,7 @@ class MainActivity : AppCompatActivity() {
             Direction.RIGHT  -> findViewById<ImageView>(R.id.rightObject)
             Direction.TOP    -> findViewById<ImageView>(R.id.topObject)
             Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomObject)
+            else -> findViewById<ImageView>(R.id.bottomObject)
         }
 
         val resId = when (incomingObject) {
@@ -256,4 +286,85 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    fun removeObjectImg(direction: Direction){
+        val objectView = when (direction) {
+            Direction.LEFT   -> findViewById<ImageView>(R.id.leftObject)
+            Direction.RIGHT  -> findViewById<ImageView>(R.id.rightObject)
+            Direction.TOP    -> findViewById<ImageView>(R.id.topObject)
+            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomObject)
+            else -> findViewById<ImageView>(R.id.bottomObject)
+        }
+
+        objectView.apply {
+            visibility = View.GONE
+        }
+    }
+
+    private fun connectSocket(userId: Int) {
+
+        val request = Request.Builder()
+            .url("ws://$serverIp:3001?user_id=$userId")
+            .build()
+
+        val client = OkHttpClient()
+
+        socket = client.newWebSocket(request, object : WebSocketListener() {
+
+            override fun onOpen(ws: WebSocket, resp: Response) {
+                runOnUiThread { toast("WS conectado!") }
+            }
+
+            override fun onMessage(ws: WebSocket, text: String) {
+                // converte JSON → Notification
+                val notif = notifAdapter.fromJson(text) ?: return
+
+                // Ignorar notificação do pedestre
+                val block = notif.driver_data ?: return
+
+                // Mapeia texto → enums
+                val dir = when (block.object_direction.lowercase()) {
+                    "left"   -> Direction.LEFT
+                    "right"  -> Direction.RIGHT
+                    "top"    -> Direction.TOP
+                    "bottom" -> Direction.BOTTOM
+                    else     -> Direction.TOP
+                }
+                val intensity = when (block.risk_level.lowercase()) {
+                    "low"    -> 0
+                    "medium" -> 1
+                    else     -> 2                    // "high"
+                }
+
+                val obj = Objects.MOTORCYCLE
+
+                val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
+                // Atualiza UI na thread principal
+                runOnUiThread {
+                    if (mostRecentDirection != Direction.NULL){
+                        stopArrowBlink(mostRecentDirection)
+                        stopPulse(mostRecentDirection)
+                        removeObjectImg(mostRecentDirection)
+                    }
+
+                    if (prefs.getBoolean("notif_visual", true))
+                        notifyVisual(dir, intensity, obj)
+
+                    if (prefs.getBoolean("notif_sonora", true))
+                        SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+
+                    mostRecentDirection = dir
+                }
+
+            }
+
+            override fun onFailure(ws: WebSocket, t: Throwable, r: Response?) {
+                runOnUiThread { toast("WS erro: ${t.message}") }
+            }
+
+        })
+    }
+
+    private fun toast(msg: String) =
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 }

@@ -58,4 +58,6 @@ dependencies {
 
     implementation(libs.moshi.kotlin)
 
+    implementation(libs.okhttp)
+
 }

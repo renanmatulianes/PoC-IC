@@ -2,8 +2,6 @@ package com.example.app
 
 import android.animation.ValueAnimator
 import android.content.Intent
-import android.content.SharedPreferences
-import android.graphics.drawable.AnimatedVectorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.View
@@ -20,6 +18,11 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import android.location.Location
+import java.time.Instant
+import java.time.Duration
+import android.os.Handler
+import android.os.Looper
 
 enum class Direction { LEFT, RIGHT, TOP, BOTTOM, NULL}
 enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE, NULL}
@@ -30,14 +33,24 @@ class MainActivity : AppCompatActivity() {
     private val arrowAnimators = mutableMapOf<Direction, ValueAnimator>()
 
     private var mostRecentDirection : Direction = Direction.NULL
+    private var mostRecentNotification : Notification? = null
+
+    // Handler na main thread para agendar paradas
+    private val handler = Handler(Looper.getMainLooper())
+    // Guarda o Runnable agendado da notificação atual
+    private var stopRunnable: Runnable? = null
 
     private lateinit var socket: WebSocket
+    private var shouldReconnect = true
+    // tempo de espera antes de reconectar (ms)
+    private val reconnectDelayMs = 15000L
+
     private val moshi  = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
         .build()
     private val notifAdapter = moshi.adapter(Notification::class.java)
 
-    private val serverIp = "10.0.2.2"      // em celular real → "192.168.0.50"
+    private val serverIp = "10.0.2.2" //192.168.15.37, emulador = 10.0.2.2
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,23 +62,16 @@ class MainActivity : AppCompatActivity() {
 
         if (userId != -1) connectSocket(userId)
 
-        val visualOn   = prefs.getBoolean("notif_visual", true)
-        val vibracaoOn = prefs.getBoolean("notif_vibracao", true)
-        val sonoraOn   = prefs.getBoolean("notif_sonora", true)
-
-        window.decorView.postDelayed({
-//            if (visualOn)
-//                notifyVisual(Direction.BOTTOM, 2, Objects.MOTORCYCLE)
-//
-//            if (sonoraOn)
-//                SoundManager.playSound(this, Direction.BOTTOM, Objects.MOTORCYCLE, 2)
-
-        }, 1000)
-
         val settingsButton = findViewById<ImageView>(R.id.settingsIcon)
         settingsButton.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        shouldReconnect = false
+        socket.close(1000, "Activity destroyed")
     }
 
     fun notifyVisual(direction: Direction, intensity: Int, incomingObject: Objects){
@@ -102,10 +108,30 @@ class MainActivity : AppCompatActivity() {
         if (incomingObject != Objects.NULL)
             showObject(direction, incomingObject)
 
-        val settingsIconImg = findViewById<ImageView>(R.id.settingsIcon)
-        settingsIconImg.apply {
-            visibility = View.GONE
+//        val settingsIconImg = findViewById<ImageView>(R.id.settingsIcon)
+//        settingsIconImg.apply {
+//            visibility = View.GONE
+//        }
+    }
+
+    fun stopVisualNotification(directionArg: Direction = mostRecentDirection) {
+
+        if (directionArg == Direction.NULL) return
+
+        stopArrowBlink(directionArg)
+        stopPulse(directionArg)
+        removeObjectImg(directionArg)
+
+        val carImg = findViewById<ImageView>(R.id.carImg)
+        carImg.translationY = 0f
+
+        when (directionArg) {
+            Direction.TOP    -> findViewById<ImageView>(R.id.topArrow).translationY    = 0f
+            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomArrow).translationY = 0f
+            else -> {}
         }
+
+        findViewById<ImageView>(R.id.settingsIcon).visibility = View.VISIBLE
     }
 
     fun startPulse(direction: Direction, intensity : Int) {
@@ -155,8 +181,8 @@ class MainActivity : AppCompatActivity() {
 
             when (intensity) {
                 0 -> animTime = 800L
-                1 -> animTime = 600L
-                2 -> animTime = 400L
+                1 -> animTime = 500L
+                2 -> animTime = 300L
                 else -> animTime = 800L
             }
 
@@ -301,6 +327,56 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val res = FloatArray(1)
+        Location.distanceBetween(lat1, lon1, lat2, lon2, res)
+        return res[0].toDouble()
+    }
+
+    fun timeToCollision(vehicle: Notification.Location?, obj: Notification.Coordinates?): Double? {
+        if (vehicle == null || obj == null || obj.speed == null) return null
+
+        val dist = distanceMeters(vehicle.latitude, vehicle.longitude, obj.latitude, obj.longitude)
+
+        val vRel = obj.speed                       // suposição simplificada
+        return if (vRel > 0.0) dist / vRel else null
+    }
+
+    fun isNotificationMoreImportant(oldN: Notification?, newN: Notification): Boolean {
+        // Se não havia notificação anterior, nova sempre vence
+        if (oldN == null) return true
+
+        // 1) Calcula TTC original de cada notificação (em segundos)
+        val ttcOld = timeToCollision(oldN.location, oldN.driver_data?.object_coordinates)
+        val ttcNew = timeToCollision(newN.location, newN.driver_data?.object_coordinates)
+
+        // 2) Quanto tempo se passou entre a chegada das notificações (em ms → seg)
+        val tsOld = Instant.parse(oldN.timestamp)
+        val tsNew = Instant.parse(newN.timestamp)
+        val elapsedMs = Duration.between(tsOld, tsNew).toMillis().coerceAtLeast(0L)
+        val elapsedSec = elapsedMs / 1000.0
+
+        // 3) Calcula quanto tempo ainda resta para a antiga colidir
+        val remOld = ttcOld?.minus(elapsedSec)
+
+        return when {
+            // Se remOld <= 0 → conteúdo antigo já "expirou" → nova é mais importante
+            remOld != null && remOld <= 0.0                   -> true
+
+            // Antiga não tem TTC, mas nova tem → prioriza nova
+            remOld == null && ttcNew != null                  -> true
+
+            // Antiga tem TTC remanescente, nova não tem → mantém antiga
+            remOld != null && ttcNew == null                  -> false
+
+            // Ambas têm TTC → compara o TTC da nova com o TTC remanescente da antiga
+            remOld != null && ttcNew != null                  -> ttcNew < remOld
+
+            // Nem antiga nem nova têm TTC → mantém antiga
+            else                                               -> false
+        }
+    }
+
     private fun connectSocket(userId: Int) {
 
         val request = Request.Builder()
@@ -318,50 +394,101 @@ class MainActivity : AppCompatActivity() {
             override fun onMessage(ws: WebSocket, text: String) {
                 // converte JSON → Notification
                 val notif = notifAdapter.fromJson(text) ?: return
+                val isMoreImportant = isNotificationMoreImportant(mostRecentNotification, notif)
 
-                // Ignorar notificação do pedestre
+                if (!isMoreImportant)
+                    return
+
                 val block = notif.driver_data ?: return
 
                 // Mapeia texto → enums
                 val dir = when (block.object_direction.lowercase()) {
                     "left"   -> Direction.LEFT
                     "right"  -> Direction.RIGHT
-                    "top"    -> Direction.TOP
-                    "bottom" -> Direction.BOTTOM
+                    "front"    -> Direction.TOP
+                    "rear" -> Direction.BOTTOM
                     else     -> Direction.TOP
                 }
                 val intensity = when (block.risk_level.lowercase()) {
                     "low"    -> 0
                     "medium" -> 1
-                    else     -> 2                    // "high"
+                    else     -> 2
                 }
 
-                val obj = Objects.MOTORCYCLE
+                val obj = when (block.object_type.lowercase()) {
+                    "vehicle" -> Objects.VEHICLE
+                    "motorcycle" -> Objects.MOTORCYCLE
+                    "human" -> Objects.HUMAN
+                    "bike" -> Objects.BIKE
+                    else -> Objects.VEHICLE
+                }
+
+                //val objCoordinates = block.object_coordinates
 
                 val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
-                // Atualiza UI na thread principal
+
                 runOnUiThread {
+                    stopRunnable?.let { handler.removeCallbacks(it) }
+
                     if (mostRecentDirection != Direction.NULL){
-                        stopArrowBlink(mostRecentDirection)
-                        stopPulse(mostRecentDirection)
-                        removeObjectImg(mostRecentDirection)
+                        stopVisualNotification(mostRecentDirection)
+                        SoundManager.stop()
                     }
 
-                    if (prefs.getBoolean("notif_visual", true))
-                        notifyVisual(dir, intensity, obj)
+                    if (intensity == 0) {
+                        if (prefs.getBoolean("notif_visual-baixo", true))
+                            notifyVisual(dir, intensity, obj)
 
-                    if (prefs.getBoolean("notif_sonora", true))
-                        SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+                        if (prefs.getBoolean("notif_sonora-baixo", true))
+                            SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+                    }
+                    else if (intensity == 1){
+                        if (prefs.getBoolean("notif_visual-medio", true))
+                            notifyVisual(dir, intensity, obj)
+
+                        if (prefs.getBoolean("notif_sonora-medio", true))
+                            SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+                    }
+                    else {
+                        if (prefs.getBoolean("notif_visual-alto", true))
+                            notifyVisual(dir, intensity, obj)
+
+                        if (prefs.getBoolean("notif_sonora-alto", true))
+                            SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+                    }
 
                     mostRecentDirection = dir
+                    mostRecentNotification = notif
+
+
+                    val ttcSeconds = timeToCollision(notif.location, block.object_coordinates) ?: 0.0
+
+                    var delayMillis = ((ttcSeconds + 2.0) * 1000).toLong()
+                    if (delayMillis < 5000.0) delayMillis = (5000.0).toLong()
+
+                    val runnable = Runnable {
+                        stopVisualNotification(dir)
+                        SoundManager.stop()
+                    }
+                    handler.postDelayed(runnable, delayMillis)
+                    stopRunnable = runnable
                 }
 
             }
 
-            override fun onFailure(ws: WebSocket, t: Throwable, r: Response?) {
-                runOnUiThread { toast("WS erro: ${t.message}") }
+            override fun onFailure(ws: WebSocket, t: Throwable, resp: Response?) {
+                runOnUiThread { toast("Erro conexão. Reconectando em ${reconnectDelayMs/1000}s…") }
+                if (shouldReconnect) {
+                    handler.postDelayed({ connectSocket(userId) }, reconnectDelayMs)
+                }
             }
 
+            override fun onClosing(ws: WebSocket, code: Int, reason: String) {
+                runOnUiThread { toast("Erro conexão. Reconectando em ${reconnectDelayMs/1000}s…") }
+                if (shouldReconnect) {
+                    handler.postDelayed({ connectSocket(userId) }, reconnectDelayMs)
+                }
+            }
         })
     }
 

@@ -50,7 +50,7 @@ class SettingsActivity : AppCompatActivity() {
         loadPreferences()
 
         saveButton.setOnClickListener {
-            prefs.edit {
+            prefs.edit (true) {
                 putBoolean("notif_visual-alto", switchVisualAlto.isChecked)
                 putBoolean("notif_vibracao-alto", switchVibracaoAlto.isChecked)
                 putBoolean("notif_sonora-alto", switchSonoraAlto.isChecked)

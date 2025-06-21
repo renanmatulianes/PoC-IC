@@ -388,7 +388,7 @@ class MainActivity : AppCompatActivity() {
         socket = client.newWebSocket(request, object : WebSocketListener() {
 
             override fun onOpen(ws: WebSocket, resp: Response) {
-                runOnUiThread { toast("WS conectado!") }
+                runOnUiThread { toast("Conectado ao servidor!") }
             }
 
             override fun onMessage(ws: WebSocket, text: String) {

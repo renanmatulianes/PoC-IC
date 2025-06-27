@@ -4,6 +4,7 @@ data class Notification(
     val pedestrian_data: Pedestrian?,
     val driver_data: Driver?,
     val location: Location?,
+    val driver_speed: Float,
     val timestamp: String
 ) {
     data class Location(

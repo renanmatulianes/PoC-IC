@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private val notifAdapter = moshi.adapter(Notification::class.java)
 
     private val serverIp = "10.0.2.2" //192.168.15.37, emulador = 10.0.2.2
+    private val WSENDPOINT = "wss://poc-conecta.onrender.com"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -380,7 +381,8 @@ class MainActivity : AppCompatActivity() {
     private fun connectSocket(userId: Int) {
 
         val request = Request.Builder()
-            .url("ws://$serverIp:3001?user_id=$userId")
+            //.url("ws://$serverIp:3001?user_id=$userId")
+            .url("$WSENDPOINT?user_id=$userId")
             .build()
 
         val client = OkHttpClient()

@@ -334,12 +334,40 @@ class MainActivity : AppCompatActivity() {
         return res[0].toDouble()
     }
 
-    fun timeToCollision(vehicle: Notification.Location?, obj: Notification.Coordinates?): Double? {
-        if (vehicle == null || obj == null || obj.speed == null) return null
+    fun timeToCollision(notification: Notification?): Double? {
+        // 1. Valida se temos todos os dados necessários
+        val userLocation = notification?.location ?: return null
+        val driverData = notification.driver_data ?: return null
+        val objectCoords = driverData.object_coordinates
+        val objectSpeed = objectCoords.speed ?: return null // Velocidade do objeto em m/s
+        val userSpeed = notification.driver_speed.toDouble() // Sua velocidade em m/s
+        val direction = driverData.object_direction.lowercase()
 
-        val dist = distanceMeters(vehicle.latitude, vehicle.longitude, obj.latitude, obj.longitude)
+        // 2. Calcula a distância entre os dois
+        val dist = distanceMeters(
+            userLocation.latitude, userLocation.longitude,
+            objectCoords.latitude, objectCoords.longitude
+        )
 
-        val vRel = obj.speed                       // suposição simplificada
+        // 3. Calcula a velocidade relativa (Vrel) com base na direção
+        val vRel = when (direction) {
+            "front", "left", "right" -> {
+                // Aproximação frontal ou lateral (pior caso): velocidades se somam
+                userSpeed + objectSpeed
+            }
+            "rear" -> {
+                // Aproximação traseira: Vrel é a diferença.
+                // Só há risco de colisão se o objeto for mais rápido.
+                if (objectSpeed > userSpeed) {
+                    objectSpeed - userSpeed
+                } else {
+                    -1.0 // Indica que estão se afastando, sem risco de colisão
+                }
+            }
+            else -> -1.0 // Direção desconhecida, assume sem risco
+        }
+
+        // 4. Calcula o TTC se a velocidade relativa for positiva (estão se aproximando)
         return if (vRel > 0.0) dist / vRel else null
     }
 
@@ -348,8 +376,8 @@ class MainActivity : AppCompatActivity() {
         if (oldN == null) return true
 
         // 1) Calcula TTC original de cada notificação (em segundos)
-        val ttcOld = timeToCollision(oldN.location, oldN.driver_data?.object_coordinates)
-        val ttcNew = timeToCollision(newN.location, newN.driver_data?.object_coordinates)
+        val ttcOld = timeToCollision(oldN)
+        val ttcNew = timeToCollision(newN)
 
         // 2) Quanto tempo se passou entre a chegada das notificações (em ms → seg)
         val tsOld = Instant.parse(oldN.timestamp)
@@ -463,7 +491,7 @@ class MainActivity : AppCompatActivity() {
                     mostRecentNotification = notif
 
 
-                    val ttcSeconds = timeToCollision(notif.location, block.object_coordinates) ?: 0.0
+                    val ttcSeconds = timeToCollision(notif) ?: 0.0
 
                     var delayMillis = ((ttcSeconds + 2.0) * 1000).toLong()
                     if (delayMillis < 5000.0) delayMillis = (5000.0).toLong()

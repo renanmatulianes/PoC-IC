@@ -25,10 +25,10 @@ class RegisterActivity : AppCompatActivity() {
         prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
 
         // Já existe usuário cadastrado? pula tela
-//        if (prefs.contains("userId")) {
-//            goToRadar()
-//            return
-//        }
+        if (prefs.getInt("userId", -1) != -1) {
+            goToRadar()
+            return
+        }
 
         setContentView(R.layout.activity_register)
 

@@ -34,15 +34,15 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
 
         switchVisualAlto    = findViewById(R.id.switchVisualAlto)
-        switchVibracaoAlto  = findViewById(R.id.switchVibracaoAlto)
+//        switchVibracaoAlto  = findViewById(R.id.switchVibracaoAlto)
         switchSonoraAlto    = findViewById(R.id.switchSonoraAlto)
 
         switchVisualMedio    = findViewById(R.id.switchVisualMedio)
-        switchVibracaoMedio  = findViewById(R.id.switchVibracaoMedio)
+//        switchVibracaoMedio  = findViewById(R.id.switchVibracaoMedio)
         switchSonoraMedio    = findViewById(R.id.switchSonoraMedio)
 
         switchVisualBaixo    = findViewById(R.id.switchVisualBaixo)
-        switchVibracaoBaixo  = findViewById(R.id.switchVibracaoBaixo)
+//        switchVibracaoBaixo  = findViewById(R.id.switchVibracaoBaixo)
         switchSonoraBaixo    = findViewById(R.id.switchSonoraBaixo)
 
         saveButton      = findViewById(R.id.btnSaveSettings)
@@ -52,15 +52,15 @@ class SettingsActivity : AppCompatActivity() {
         saveButton.setOnClickListener {
             prefs.edit (true) {
                 putBoolean("notif_visual-alto", switchVisualAlto.isChecked)
-                putBoolean("notif_vibracao-alto", switchVibracaoAlto.isChecked)
+//                putBoolean("notif_vibracao-alto", switchVibracaoAlto.isChecked)
                 putBoolean("notif_sonora-alto", switchSonoraAlto.isChecked)
 
                 putBoolean("notif_visual-medio", switchVisualMedio.isChecked)
-                putBoolean("notif_vibracao-medio", switchVibracaoMedio.isChecked)
+//                putBoolean("notif_vibracao-medio", switchVibracaoMedio.isChecked)
                 putBoolean("notif_sonora-medio", switchSonoraMedio.isChecked)
 
                 putBoolean("notif_visual-baixo", switchVisualBaixo.isChecked)
-                putBoolean("notif_vibracao-baixo", switchVibracaoBaixo.isChecked)
+//                putBoolean("notif_vibracao-baixo", switchVibracaoBaixo.isChecked)
                 putBoolean("notif_sonora-baixo", switchSonoraBaixo.isChecked)
             }
 
@@ -70,27 +70,27 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun loadPreferences() {
         val visualAltoOn   = prefs.getBoolean("notif_visual-alto", true)
-        val vibracaoAltoOn = prefs.getBoolean("notif_vibracao-alto", true)
+//        val vibracaoAltoOn = prefs.getBoolean("notif_vibracao-alto", true)
         val sonoraAltoOn   = prefs.getBoolean("notif_sonora-alto", true)
 
         val visualMedioOn   = prefs.getBoolean("notif_visual-medio", true)
-        val vibracaoMedioOn = prefs.getBoolean("notif_vibracao-medio", true)
+//        val vibracaoMedioOn = prefs.getBoolean("notif_vibracao-medio", true)
         val sonoraMedioOn   = prefs.getBoolean("notif_sonora-medio", true)
 
         val visualBaixoOn   = prefs.getBoolean("notif_visual-baixo", true)
-        val vibracaoBaixoOn = prefs.getBoolean("notif_vibracao-baixo", true)
+//        val vibracaoBaixoOn = prefs.getBoolean("notif_vibracao-baixo", true)
         val sonoraBaixoOn   = prefs.getBoolean("notif_sonora-baixo", true)
 
         switchVisualAlto.isChecked   = visualAltoOn
-        switchVibracaoAlto.isChecked = vibracaoAltoOn
+//        switchVibracaoAlto.isChecked = vibracaoAltoOn
         switchSonoraAlto.isChecked   = sonoraAltoOn
 
         switchVisualMedio.isChecked   = visualMedioOn
-        switchVibracaoMedio.isChecked = vibracaoMedioOn
+//        switchVibracaoMedio.isChecked = vibracaoMedioOn
         switchSonoraMedio.isChecked   = sonoraMedioOn
 
         switchVisualBaixo.isChecked   = visualBaixoOn
-        switchVibracaoBaixo.isChecked = vibracaoBaixoOn
+//        switchVibracaoBaixo.isChecked = vibracaoBaixoOn
         switchSonoraBaixo.isChecked   = sonoraBaixoOn
     }
 }

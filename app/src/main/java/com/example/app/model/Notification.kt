@@ -1,31 +1,26 @@
 package com.example.app.model
 
 data class Notification(
-    val pedestrian_data: Pedestrian?,
-    val driver_data: Driver?,
-    val location: Location?,
-    val driver_speed: Float,
-    val timestamp: String
+    var driver_data: Driver?,
+    var location: Location?,
+    var driver_speed: Float,
+    var timestamp: String
 ) {
     data class Location(
-        val latitude: Double,
-        val longitude: Double
+        var latitude: Double,
+        var longitude: Double
     )
 
     data class Coordinates(
-        val latitude:  Double,
-        val longitude: Double,
-        val speed:     Double? = null
+        var latitude:  Double,
+        var longitude: Double,
+        var speed:     Double? = null
     )
 
-    data class Pedestrian(
-        val risk_level: String,
-        val object_direction: String   // "left" | "right" | "top" | "bottom"
-    )
     data class Driver(
-        val risk_level: String,
-        val object_direction: String,
-        val object_type: String,
-        val object_coordinates: Coordinates
+        var risk_level: String,
+        var object_direction: String,
+        var object_type: String,
+        var object_coordinates: Coordinates
     )
 }

@@ -23,6 +23,7 @@ import java.time.Instant
 import java.time.Duration
 import android.os.Handler
 import android.os.Looper
+import com.example.app.model.PsmNotification
 
 enum class Direction { LEFT, RIGHT, TOP, BOTTOM, NULL}
 enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE, NULL}
@@ -49,6 +50,8 @@ class MainActivity : AppCompatActivity() {
         .addLast(KotlinJsonAdapterFactory())
         .build()
     private val notifAdapter = moshi.adapter(Notification::class.java)
+    private val psmAdapter = moshi.adapter(PsmNotification::class.java)
+
 
     private val serverIp = "10.0.2.2" //192.168.15.37, emulador = 10.0.2.2
     private val WSENDPOINT = "wss://poc-conecta.onrender.com"
@@ -406,11 +409,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    fun psm2notif(psm: PsmNotification): Notification {
+
+        val location = Notification.Location(
+            latitude  = psm.position.latitude,
+            longitude = psm.position.longitude
+        )
+
+        val coords = Notification.Coordinates(
+            latitude  = psm.position.latitude,
+            longitude = psm.position.longitude,
+            speed     = psm.speed * 0.02
+        )
+
+        val objType = "HUMAN"
+
+        val dirString = "left"
+
+        val risk = "high"
+
+        val driverData = Notification.Driver(
+            risk_level       = risk,
+            object_direction = dirString,
+            object_type      = objType,
+            object_coordinates = coords
+        )
+
+        val timestamp = Instant.now().toString()
+
+        return Notification(
+            driver_data     = driverData,
+            location        = location,
+            driver_speed    = psm.speed.toFloat(),
+            timestamp       = timestamp
+        )
+    }
+
     private fun connectSocket(userId: Int) {
 
         val request = Request.Builder()
-            //.url("ws://$serverIp:3001?user_id=$userId")
-            .url("$WSENDPOINT?user_id=$userId")
+            .url("ws://$serverIp:3001?user_id=$userId")
+            //.url("$WSENDPOINT?user_id=$userId")
             .build()
 
         val client = OkHttpClient()
@@ -423,11 +462,14 @@ class MainActivity : AppCompatActivity() {
 
             override fun onMessage(ws: WebSocket, text: String) {
                 // converte JSON → Notification
-                val notif = notifAdapter.fromJson(text) ?: return
+                val psmNotif = psmAdapter.fromJson(text) ?: return
+
+                val notif = psm2notif(psmNotif)
+
                 val isMoreImportant = isNotificationMoreImportant(mostRecentNotification, notif)
 
-                if (!isMoreImportant)
-                    return
+                //if (!isMoreImportant)
+                    //return
 
                 val block = notif.driver_data ?: return
 

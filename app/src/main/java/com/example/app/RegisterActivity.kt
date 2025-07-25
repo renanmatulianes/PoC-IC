@@ -21,6 +21,7 @@ class RegisterActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        goToRadar()
 
         prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
 

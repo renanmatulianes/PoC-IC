@@ -10,61 +10,64 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.app.model.Notification
+import com.example.app.model.PsmNotification
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import android.location.Location
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.InputStreamReader
+import java.net.Socket
 import java.time.Instant
 import java.time.Duration
 import android.os.Handler
 import android.os.Looper
-import com.example.app.model.PsmNotification
+import android.util.Log
+import android.location.Location
+import java.io.IOException
+import java.lang.StringBuilder
 
 enum class Direction { LEFT, RIGHT, TOP, BOTTOM, NULL}
 enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE, NULL}
 
 class MainActivity : AppCompatActivity() {
 
+    // ... (nenhuma mudança aqui)
     private val pulseAnimators = mutableMapOf<Direction, ValueAnimator>()
     private val arrowAnimators = mutableMapOf<Direction, ValueAnimator>()
 
     private var mostRecentDirection : Direction = Direction.NULL
     private var mostRecentNotification : Notification? = null
 
-    // Handler na main thread para agendar paradas
     private val handler = Handler(Looper.getMainLooper())
-    // Guarda o Runnable agendado da notificação atual
     private var stopRunnable: Runnable? = null
 
-    private lateinit var socket: WebSocket
+    private var tcpSocket: Socket? = null
+    private var connectionJob: Job? = null
     private var shouldReconnect = true
-    // tempo de espera antes de reconectar (ms)
     private val reconnectDelayMs = 15000L
 
     private val moshi  = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
         .build()
-    private val notifAdapter = moshi.adapter(Notification::class.java)
+
+    private val psmListType = Types.newParameterizedType(List::class.java, PsmNotification::class.java)
     private val psmAdapter = moshi.adapter(PsmNotification::class.java)
 
+    private val serverIp = "192.168.0.53"
+    private val serverPort = 8080
 
-    private val serverIp = "10.0.2.2" //192.168.15.37, emulador = 10.0.2.2
-    private val WSENDPOINT = "wss://poc-conecta.onrender.com"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
-
-        val userId = prefs.getInt("userId", -1)
-
-        if (userId != -1) connectSocket(userId)
+        connectTcpSocket()
 
         val settingsButton = findViewById<ImageView>(R.id.settingsIcon)
         settingsButton.setOnClickListener {
@@ -75,9 +78,162 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         shouldReconnect = false
-        socket.close(1000, "Activity destroyed")
+        connectionJob?.cancel()
+        try {
+            tcpSocket?.close()
+        } catch (e: IOException) {
+            Log.e("MainActivity", "Erro ao fechar o socket", e)
+        }
     }
 
+    // ALTERAÇÃO: Adicionado filtro para processar apenas mensagens que contêm "basicType"
+    private fun connectTcpSocket() {
+        connectionJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (shouldReconnect) {
+                try {
+                    Log.d("TCP", "Tentando conectar a $serverIp:$serverPort...")
+                    tcpSocket = Socket(serverIp, serverPort)
+
+                    withContext(Dispatchers.Main) {
+                        toast("Conectado ao servidor OBU!")
+                    }
+                    Log.d("TCP", "Conexão estabelecida.")
+
+                    val reader = InputStreamReader(tcpSocket!!.getInputStream())
+                    val jsonMessageBuilder = StringBuilder()
+                    var braceCount = 0
+                    var isInsideJson = false
+
+                    val buffer = CharArray(4096)
+                    var charsRead: Int = 0
+
+                    while (tcpSocket!!.isConnected && (reader.read(buffer).also { charsRead = it } != -1)) {
+                        for (i in 0 until charsRead) {
+                            val char = buffer[i]
+
+                            if (!isInsideJson) {
+                                if (char == '{') { // Agora esperamos um objeto
+                                    isInsideJson = true
+                                    jsonMessageBuilder.append(char)
+                                    braceCount++
+                                }
+                            } else {
+                                jsonMessageBuilder.append(char)
+                                if (char == '{') {
+                                    braceCount++
+                                } else if (char == '}') {
+                                    braceCount--
+                                }
+
+                                if (braceCount == 0) {
+                                    val completeJson = jsonMessageBuilder.toString()
+                                    isInsideJson = false
+                                    jsonMessageBuilder.clear()
+
+                                    if (completeJson.contains("\"basicType\"")) {
+                                        Log.d("TCP", "Mensagem válida encontrada: $completeJson")
+                                        processMessage(completeJson)
+                                    } else {
+                                        Log.d("TCP", "Mensagem ignorada (não contém 'basicType'): $completeJson")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                } catch (e: IOException) {
+                    if (!shouldReconnect) break
+                    Log.e("TCP", "Erro de conexão: ${e.message}")
+                    withContext(Dispatchers.Main) {
+                        toast("Erro de conexão. Reconectando em ${reconnectDelayMs / 1000}s…")
+                    }
+                    delay(reconnectDelayMs)
+                } finally {
+                    try {
+                        tcpSocket?.close()
+                    } catch (e: IOException) {
+                        Log.e("TCP", "Erro ao fechar socket na tentativa de reconexão", e)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun processMessage(jsonString: String) {
+        val psmNotification = try {
+            psmAdapter.fromJson(jsonString) // Usa o adaptador de objeto único
+        } catch (e: Exception) {
+            Log.e("JSON", "Erro ao fazer o parsing do JSON: $jsonString", e)
+            null
+        }
+
+        // Usa .let para processar o objeto único se ele não for nulo
+        psmNotification?.let { psmNotif ->
+            val notif = psm2notif(psmNotif)
+            val isMoreImportant = isNotificationMoreImportant(mostRecentNotification, notif)
+
+
+            val block = notif.driver_data ?: return@let
+
+            val dir = when (block.object_direction.lowercase()) {
+                "left" -> Direction.LEFT
+                "right" -> Direction.RIGHT
+                "front" -> Direction.TOP
+                "rear" -> Direction.BOTTOM
+                else -> Direction.TOP
+            }
+            val intensity = when (block.risk_level.lowercase()) {
+                "low" -> 0
+                "medium" -> 1
+                else -> 2
+            }
+            val obj = when (block.object_type.lowercase()) {
+                "vehicle" -> Objects.VEHICLE
+                "motorcycle" -> Objects.MOTORCYCLE
+                "human" -> Objects.HUMAN
+                "bike" -> Objects.BIKE
+                else -> Objects.VEHICLE
+            }
+
+            val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
+
+            withContext(Dispatchers.Main) {
+                stopRunnable?.let { handler.removeCallbacks(it) }
+
+                if (mostRecentDirection != Direction.NULL) {
+                    stopVisualNotification(mostRecentDirection)
+                    SoundManager.stop()
+                }
+
+                if (intensity == 0) {
+                    if (prefs.getBoolean("notif_visual-baixo", true)) notifyVisual(dir, intensity, obj)
+                    if (prefs.getBoolean("notif_sonora-baixo", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+                } else if (intensity == 1) {
+                    if (prefs.getBoolean("notif_visual-medio", true)) notifyVisual(dir, intensity, obj)
+                    if (prefs.getBoolean("notif_sonora-medio", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+                } else {
+                    if (prefs.getBoolean("notif_visual-alto", true)) notifyVisual(dir, intensity, obj)
+                    if (prefs.getBoolean("notif_sonora-alto", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+                }
+
+                mostRecentDirection = dir
+                mostRecentNotification = notif
+
+                val ttcSeconds = timeToCollision(notif) ?: 0.0
+                var delayMillis = ((ttcSeconds + 2.0) * 1000).toLong()
+                if (delayMillis < 5000L) delayMillis = 5000L
+
+                val runnable = Runnable {
+                    stopVisualNotification(dir)
+                    SoundManager.stop()
+                }
+                handler.postDelayed(runnable, delayMillis)
+                stopRunnable = runnable
+            }
+        }
+    }
+
+    // O restante do seu código (funções de UI, psm2notif, etc.) permanece o mesmo.
     fun notifyVisual(direction: Direction, intensity: Int, incomingObject: Objects){
         val carImg = findViewById<ImageView>(R.id.carImg)
 
@@ -111,11 +267,6 @@ class MainActivity : AppCompatActivity() {
 
         if (incomingObject != Objects.NULL)
             showObject(direction, incomingObject)
-
-//        val settingsIconImg = findViewById<ImageView>(R.id.settingsIcon)
-//        settingsIconImg.apply {
-//            visibility = View.GONE
-//        }
     }
 
     fun stopVisualNotification(directionArg: Direction = mostRecentDirection) {
@@ -338,79 +489,58 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun timeToCollision(notification: Notification?): Double? {
-        // 1. Valida se temos todos os dados necessários
         val userLocation = notification?.location ?: return null
         val driverData = notification.driver_data ?: return null
         val objectCoords = driverData.object_coordinates
-        val objectSpeed = objectCoords.speed ?: return null // Velocidade do objeto em m/s
-        val userSpeed = notification.driver_speed.toDouble() // Sua velocidade em m/s
+        val objectSpeed = objectCoords.speed ?: return null
+        val userSpeed = notification.driver_speed.toDouble()
         val direction = driverData.object_direction.lowercase()
 
-        // 2. Calcula a distância entre os dois
         val dist = distanceMeters(
             userLocation.latitude, userLocation.longitude,
             objectCoords.latitude, objectCoords.longitude
         )
 
-        // 3. Calcula a velocidade relativa (Vrel) com base na direção
         val vRel = when (direction) {
             "front", "left", "right" -> {
-                // Aproximação frontal ou lateral (pior caso): velocidades se somam
                 userSpeed + objectSpeed
             }
             "rear" -> {
-                // Aproximação traseira: Vrel é a diferença.
-                // Só há risco de colisão se o objeto for mais rápido.
                 if (objectSpeed > userSpeed) {
                     objectSpeed - userSpeed
                 } else {
-                    -1.0 // Indica que estão se afastando, sem risco de colisão
+                    -1.0
                 }
             }
-            else -> -1.0 // Direção desconhecida, assume sem risco
+            else -> -1.0
         }
 
-        // 4. Calcula o TTC se a velocidade relativa for positiva (estão se aproximando)
         return if (vRel > 0.0) dist / vRel else null
     }
 
     fun isNotificationMoreImportant(oldN: Notification?, newN: Notification): Boolean {
-        // Se não havia notificação anterior, nova sempre vence
         if (oldN == null) return true
 
-        // 1) Calcula TTC original de cada notificação (em segundos)
         val ttcOld = timeToCollision(oldN)
         val ttcNew = timeToCollision(newN)
 
-        // 2) Quanto tempo se passou entre a chegada das notificações (em ms → seg)
         val tsOld = Instant.parse(oldN.timestamp)
         val tsNew = Instant.parse(newN.timestamp)
         val elapsedMs = Duration.between(tsOld, tsNew).toMillis().coerceAtLeast(0L)
         val elapsedSec = elapsedMs / 1000.0
 
-        // 3) Calcula quanto tempo ainda resta para a antiga colidir
         val remOld = ttcOld?.minus(elapsedSec)
 
         return when {
-            // Se remOld <= 0 → conteúdo antigo já "expirou" → nova é mais importante
-            remOld != null && remOld <= 0.0                   -> true
-
-            // Antiga não tem TTC, mas nova tem → prioriza nova
-            remOld == null && ttcNew != null                  -> true
-
-            // Antiga tem TTC remanescente, nova não tem → mantém antiga
-            remOld != null && ttcNew == null                  -> false
-
-            // Ambas têm TTC → compara o TTC da nova com o TTC remanescente da antiga
-            remOld != null && ttcNew != null                  -> ttcNew < remOld
-
-            // Nem antiga nem nova têm TTC → mantém antiga
-            else                                               -> false
+            remOld != null && remOld <= 0.0 -> true
+            remOld == null && ttcNew != null -> true
+            remOld != null && ttcNew == null -> false
+            remOld != null && ttcNew != null -> ttcNew < remOld
+            else -> false
         }
     }
 
     fun psm2notif(psm: PsmNotification): Notification {
-
         val location = Notification.Location(
             latitude  = psm.position.latitude,
             longitude = psm.position.longitude
@@ -423,9 +553,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         val objType = "HUMAN"
-
         val dirString = "left"
-
         val risk = "high"
 
         val driverData = Notification.Driver(
@@ -443,125 +571,6 @@ class MainActivity : AppCompatActivity() {
             driver_speed    = psm.speed.toFloat(),
             timestamp       = timestamp
         )
-    }
-
-    private fun connectSocket(userId: Int) {
-
-        val request = Request.Builder()
-            .url("ws://$serverIp:3001?user_id=$userId")
-            //.url("$WSENDPOINT?user_id=$userId")
-            .build()
-
-        val client = OkHttpClient()
-
-        socket = client.newWebSocket(request, object : WebSocketListener() {
-
-            override fun onOpen(ws: WebSocket, resp: Response) {
-                runOnUiThread { toast("Conectado ao servidor!") }
-            }
-
-            override fun onMessage(ws: WebSocket, text: String) {
-                // converte JSON → Notification
-                val psmNotif = psmAdapter.fromJson(text) ?: return
-
-                val notif = psm2notif(psmNotif)
-
-                val isMoreImportant = isNotificationMoreImportant(mostRecentNotification, notif)
-
-                //if (!isMoreImportant)
-                    //return
-
-                val block = notif.driver_data ?: return
-
-                // Mapeia texto → enums
-                val dir = when (block.object_direction.lowercase()) {
-                    "left"   -> Direction.LEFT
-                    "right"  -> Direction.RIGHT
-                    "front"    -> Direction.TOP
-                    "rear" -> Direction.BOTTOM
-                    else     -> Direction.TOP
-                }
-                val intensity = when (block.risk_level.lowercase()) {
-                    "low"    -> 0
-                    "medium" -> 1
-                    else     -> 2
-                }
-
-                val obj = when (block.object_type.lowercase()) {
-                    "vehicle" -> Objects.VEHICLE
-                    "motorcycle" -> Objects.MOTORCYCLE
-                    "human" -> Objects.HUMAN
-                    "bike" -> Objects.BIKE
-                    else -> Objects.VEHICLE
-                }
-
-                //val objCoordinates = block.object_coordinates
-
-                val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
-
-                runOnUiThread {
-                    stopRunnable?.let { handler.removeCallbacks(it) }
-
-                    if (mostRecentDirection != Direction.NULL){
-                        stopVisualNotification(mostRecentDirection)
-                        SoundManager.stop()
-                    }
-
-                    if (intensity == 0) {
-                        if (prefs.getBoolean("notif_visual-baixo", true))
-                            notifyVisual(dir, intensity, obj)
-
-                        if (prefs.getBoolean("notif_sonora-baixo", true))
-                            SoundManager.playSound(this@MainActivity, dir, obj, intensity)
-                    }
-                    else if (intensity == 1){
-                        if (prefs.getBoolean("notif_visual-medio", true))
-                            notifyVisual(dir, intensity, obj)
-
-                        if (prefs.getBoolean("notif_sonora-medio", true))
-                            SoundManager.playSound(this@MainActivity, dir, obj, intensity)
-                    }
-                    else {
-                        if (prefs.getBoolean("notif_visual-alto", true))
-                            notifyVisual(dir, intensity, obj)
-
-                        if (prefs.getBoolean("notif_sonora-alto", true))
-                            SoundManager.playSound(this@MainActivity, dir, obj, intensity)
-                    }
-
-                    mostRecentDirection = dir
-                    mostRecentNotification = notif
-
-
-                    val ttcSeconds = timeToCollision(notif) ?: 0.0
-
-                    var delayMillis = ((ttcSeconds + 2.0) * 1000).toLong()
-                    if (delayMillis < 5000.0) delayMillis = (5000.0).toLong()
-
-                    val runnable = Runnable {
-                        stopVisualNotification(dir)
-                        SoundManager.stop()
-                    }
-                    handler.postDelayed(runnable, delayMillis)
-                    stopRunnable = runnable
-                }
-
-            }
-
-            override fun onFailure(ws: WebSocket, t: Throwable, resp: Response?) {
-                runOnUiThread { toast("Erro conexão. Reconectando em ${reconnectDelayMs/1000}s…") }
-                if (shouldReconnect) {
-                    handler.postDelayed({ connectSocket(userId) }, reconnectDelayMs)
-                }
-            }
-
-            override fun onClosing(ws: WebSocket, code: Int, reason: String) {
-                runOnUiThread { toast("Erro conexão. Reconectando em ${reconnectDelayMs/1000}s…") }
-                if (shouldReconnect) {
-                    handler.postDelayed({ connectSocket(userId) }, reconnectDelayMs)
-                }
-            }
-        })
     }
 
     private fun toast(msg: String) =

@@ -1,3 +1,5 @@
+// ARQUIVO ATUALIZADO: MainActivity.kt
+
 package com.example.app
 
 import android.animation.ValueAnimator
@@ -11,6 +13,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+// ALTERAÇÃO 1: Importar os novos modelos
+import com.example.app.model.BsmNotification
+import com.example.app.model.CombinedNotification
 import com.example.app.model.Notification
 import com.example.app.model.PsmNotification
 import com.squareup.moshi.Moshi
@@ -37,7 +42,6 @@ enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE, NULL}
 
 class MainActivity : AppCompatActivity() {
 
-    // ... (nenhuma mudança aqui)
     private val pulseAnimators = mutableMapOf<Direction, ValueAnimator>()
     private val arrowAnimators = mutableMapOf<Direction, ValueAnimator>()
 
@@ -56,11 +60,10 @@ class MainActivity : AppCompatActivity() {
         .addLast(KotlinJsonAdapterFactory())
         .build()
 
-    private val psmListType = Types.newParameterizedType(List::class.java, PsmNotification::class.java)
-    private val psmAdapter = moshi.adapter(PsmNotification::class.java)
+    private val combinedNotificationAdapter = moshi.adapter(CombinedNotification::class.java)
 
-    private val serverIp = "192.168.0.53"
-    private val serverPort = 8080
+    private val serverIp = "10.0.2.2"
+    private val serverPort = 3001
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,7 +89,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ALTERAÇÃO: Adicionado filtro para processar apenas mensagens que contêm "basicType"
     private fun connectTcpSocket() {
         connectionJob = lifecycleScope.launch(Dispatchers.IO) {
             while (shouldReconnect) {
@@ -112,7 +114,7 @@ class MainActivity : AppCompatActivity() {
                             val char = buffer[i]
 
                             if (!isInsideJson) {
-                                if (char == '{') { // Agora esperamos um objeto
+                                if (char == '{') {
                                     isInsideJson = true
                                     jsonMessageBuilder.append(char)
                                     braceCount++
@@ -130,11 +132,11 @@ class MainActivity : AppCompatActivity() {
                                     isInsideJson = false
                                     jsonMessageBuilder.clear()
 
-                                    if (completeJson.contains("\"basicType\"")) {
+                                    if (completeJson.contains("\"psm\"") && completeJson.contains("\"bsm\"")) {
                                         Log.d("TCP", "Mensagem válida encontrada: $completeJson")
                                         processMessage(completeJson)
                                     } else {
-                                        Log.d("TCP", "Mensagem ignorada (não contém 'basicType'): $completeJson")
+                                        Log.d("TCP", "Mensagem ignorada (não contém 'psm' e 'bsm'): $completeJson")
                                     }
                                 }
                             }
@@ -160,18 +162,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun processMessage(jsonString: String) {
-        val psmNotification = try {
-            psmAdapter.fromJson(jsonString) // Usa o adaptador de objeto único
+        val combinedNotification = try {
+            combinedNotificationAdapter.fromJson(jsonString)
         } catch (e: Exception) {
             Log.e("JSON", "Erro ao fazer o parsing do JSON: $jsonString", e)
             null
         }
 
-        // Usa .let para processar o objeto único se ele não for nulo
-        psmNotification?.let { psmNotif ->
-            val notif = psm2notif(psmNotif)
-            val isMoreImportant = isNotificationMoreImportant(mostRecentNotification, notif)
+        combinedNotification?.let { notifData ->
 
+            val notif = combinedToAppNotification(notifData)
+            val isMoreImportant = isNotificationMoreImportant(mostRecentNotification, notif)
 
             val block = notif.driver_data ?: return@let
 
@@ -202,7 +203,6 @@ class MainActivity : AppCompatActivity() {
 
                 if (mostRecentDirection != Direction.NULL) {
                     stopVisualNotification(mostRecentDirection)
-                    SoundManager.stop()
                 }
 
                 if (intensity == 0) {
@@ -233,7 +233,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // O restante do seu código (funções de UI, psm2notif, etc.) permanece o mesmo.
     fun notifyVisual(direction: Direction, intensity: Int, incomingObject: Objects){
         val carImg = findViewById<ImageView>(R.id.carImg)
 
@@ -540,39 +539,111 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun psm2notif(psm: PsmNotification): Notification {
-        val location = Notification.Location(
-            latitude  = psm.position.latitude,
-            longitude = psm.position.longitude
-        )
+    fun combinedToAppNotification(data: CombinedNotification): Notification {
+        val bsm = data.bsm.value.coreData
+        val psm = data.psm
 
-        val coords = Notification.Coordinates(
-            latitude  = psm.position.latitude,
-            longitude = psm.position.longitude,
-            speed     = psm.speed * 0.02
-        )
+        // --- 1. Conversão de Unidades ---
+        // Dados do veículo (motorista) do BSM
+        val userLat = bsm.lat / 10_000_000.0
+        val userLon = bsm.long / 10_000_000.0
+        val userSpeed = bsm.speed.toFloat() * 0.02f
+        val userHeading = bsm.heading * 0.0125 // Unidades de 0.0125 graus
 
-        val objType = "HUMAN"
-        val dirString = "left"
-        val risk = "high"
+        // Dados do objeto (pedestre) do PSM
+        val objectLat = psm.position.latitude / 10_000_000.0
+        val objectLon = psm.position.longitude / 10_000_000.0
+        val objectSpeed = psm.speed * 0.02
+
+        // --- 2. Determinar Tipo do Objeto ---
+        val objType = when {
+            psm.basicType.contains("PEDESTRIAN", ignoreCase = true) -> "HUMAN"
+            psm.basicType.contains("CYCLIST", ignoreCase = true) -> "BIKE"
+            // Adicionar mais tipos se necessário
+            else -> "HUMAN"
+        }
+
+        // --- 3. Calcular Direção Relativa (dirString) ---
+        // Azimute do veículo para o pedestre
+        val bearingToObject = calculateBearing(userLat, userLon, objectLat, objectLon)
+        // Ângulo do pedestre em relação à frente do veículo
+        val relativeAngle = normalizeAngle(bearingToObject - userHeading)
+
+        // Mapear ângulo para direção (front, rear, left, right)
+        val dirString = when {
+            relativeAngle >= -45 && relativeAngle < 45 -> "front"
+            relativeAngle >= 45 && relativeAngle < 135 -> "right"
+            relativeAngle >= 135 || relativeAngle < -135 -> "rear"
+            else -> "left" // -135 to -45
+        }
+
+        val risk = "low"
+
+        // --- 5. Montar o objeto Notification ---
+        val userLocation = Notification.Location(latitude = userLat, longitude = userLon)
+        val objectCoords = Notification.Coordinates(latitude = objectLat, longitude = objectLon, speed = objectSpeed)
 
         val driverData = Notification.Driver(
-            risk_level       = risk,
+            risk_level = risk,
             object_direction = dirString,
-            object_type      = objType,
-            object_coordinates = coords
+            object_type = objType,
+            object_coordinates = objectCoords
         )
 
         val timestamp = Instant.now().toString()
 
-        return Notification(
-            driver_data     = driverData,
-            location        = location,
-            driver_speed    = psm.speed.toFloat(),
-            timestamp       = timestamp
+        val convertedNotif = Notification(
+            driver_data = driverData,
+            location = userLocation,
+            driver_speed = userSpeed,
+            timestamp = timestamp
         )
+
+        val ttc = timeToCollision(convertedNotif)
+
+        convertedNotif.driver_data?.risk_level = if (ttc != null) {
+            when {
+                ttc < 4.0 -> "high"
+                ttc <= 8.0 -> "medium"
+                else -> "low"
+            }
+        } else {
+            "low"
+        }
+
+        return convertedNotif
     }
 
     private fun toast(msg: String) =
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-}
+    }
+
+    /**
+     * Calcula o azimute (bearing) inicial em graus de um ponto de partida para um ponto de destino.
+     * O azimute é o ângulo em relação ao Norte verdadeiro, no sentido horário (0-360).
+     */
+    private fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val lat1Rad = Math.toRadians(lat1)
+        val lat2Rad = Math.toRadians(lat2)
+        val deltaLonRad = Math.toRadians(lon2 - lon1)
+
+        val y = Math.sin(deltaLonRad) * Math.cos(lat2Rad)
+        val x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(deltaLonRad)
+
+        val bearingRad = Math.atan2(y, x)
+        return (Math.toDegrees(bearingRad) + 360) % 360 // Normaliza para 0-360
+    }
+
+    /**
+     * Normaliza um ângulo para o intervalo [-180, 180].
+     */
+    private fun normalizeAngle(angle: Double): Double {
+        var a = angle % 360
+        if (a > 180) {
+            a -= 360
+        }
+        if (a <= -180) {
+            a += 360
+        }
+        return a
+    }

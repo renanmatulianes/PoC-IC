@@ -15,8 +15,8 @@ data class PsmNotification(
     @Json(name="pathPrediction") val pathPrediction: PathPrediction
 ) {
     data class Position(
-        @Json(name="lat" ) val latitude: Double,
-        @Json(name="long") val longitude: Double
+        @Json(name="lat" ) val latitude: Long,
+        @Json(name="long") val longitude: Long
     )
     data class Accuracy(
         val semiMajor: Int,

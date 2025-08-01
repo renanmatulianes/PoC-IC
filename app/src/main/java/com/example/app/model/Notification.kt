@@ -18,6 +18,7 @@ data class Notification(
     )
 
     data class Driver(
+        var object_id: String,
         var risk_level: String,
         var object_direction: String,
         var object_type: String,

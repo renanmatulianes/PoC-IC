@@ -13,7 +13,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-// ALTERAÇÃO 1: Importar os novos modelos
 import com.example.app.model.BsmNotification
 import com.example.app.model.CombinedNotification
 import com.example.app.model.Notification
@@ -49,7 +48,9 @@ class MainActivity : AppCompatActivity() {
     private var mostRecentNotification : Notification? = null
 
     private val handler = Handler(Looper.getMainLooper())
-    private var stopRunnable: Runnable? = null
+
+    private val activeNotifications = mutableMapOf<String, Notification>()
+    private val cleanupRunnables = mutableMapOf<String, Runnable>()
 
     private var tcpSocket: Socket? = null
     private var connectionJob: Job? = null
@@ -62,8 +63,8 @@ class MainActivity : AppCompatActivity() {
 
     private val combinedNotificationAdapter = moshi.adapter(CombinedNotification::class.java)
 
-    private val serverIp = "10.0.2.2"
-    private val serverPort = 3001
+    private val serverIp = "192.168.0.53" // 192.168.0.53
+    private val serverPort = 8080 // 8080
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -170,67 +171,94 @@ class MainActivity : AppCompatActivity() {
         }
 
         combinedNotification?.let { notifData ->
+            // O ID do objeto (pedestre) vem do PSM e é a nossa chave.
+            val objectId = notifData.psm.id
+            val newNotif = combinedToAppNotification(notifData)
 
-            val notif = combinedToAppNotification(notifData)
-            val isMoreImportant = isNotificationMoreImportant(mostRecentNotification, notif)
+            val existingNotif = activeNotifications[objectId]
 
-            val block = notif.driver_data ?: return@let
-
-            val dir = when (block.object_direction.lowercase()) {
-                "left" -> Direction.LEFT
-                "right" -> Direction.RIGHT
-                "front" -> Direction.TOP
-                "rear" -> Direction.BOTTOM
-                else -> Direction.TOP
-            }
-            val intensity = when (block.risk_level.lowercase()) {
-                "low" -> 0
-                "medium" -> 1
-                else -> 2
-            }
-            val obj = when (block.object_type.lowercase()) {
-                "vehicle" -> Objects.VEHICLE
-                "motorcycle" -> Objects.MOTORCYCLE
-                "human" -> Objects.HUMAN
-                "bike" -> Objects.BIKE
-                else -> Objects.VEHICLE
-            }
-
-            val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
-
-            withContext(Dispatchers.Main) {
-                stopRunnable?.let { handler.removeCallbacks(it) }
-
-                if (mostRecentDirection != Direction.NULL) {
-                    stopVisualNotification(mostRecentDirection)
+            // --- LÓGICA PRINCIPAL: DECIDIR SE ATUALIZA OU NÃO ---
+            if (shouldDisplayNotification(newNotif, existingNotif)) {
+                withContext(Dispatchers.Main) {
+                    displayOrUpdateNotification(newNotif)
                 }
-
-                if (intensity == 0) {
-                    if (prefs.getBoolean("notif_visual-baixo", true)) notifyVisual(dir, intensity, obj)
-                    if (prefs.getBoolean("notif_sonora-baixo", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
-                } else if (intensity == 1) {
-                    if (prefs.getBoolean("notif_visual-medio", true)) notifyVisual(dir, intensity, obj)
-                    if (prefs.getBoolean("notif_sonora-medio", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
-                } else {
-                    if (prefs.getBoolean("notif_visual-alto", true)) notifyVisual(dir, intensity, obj)
-                    if (prefs.getBoolean("notif_sonora-alto", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+            }
+            else if (existingNotif != null) {
+                // Caso B: Risco é o mesmo ou menor. Apenas "refresca" a notificação existente.
+                withContext(Dispatchers.Main) {
+                    refreshNotificationTimeout(objectId)
                 }
-
-                mostRecentDirection = dir
-                mostRecentNotification = notif
-
-                val ttcSeconds = timeToCollision(notif) ?: 0.0
-                var delayMillis = ((ttcSeconds + 2.0) * 1000).toLong()
-                if (delayMillis < 5000L) delayMillis = 5000L
-
-                val runnable = Runnable {
-                    stopVisualNotification(dir)
-                    SoundManager.stop()
-                }
-                handler.postDelayed(runnable, delayMillis)
-                stopRunnable = runnable
             }
         }
+    }
+
+    private fun displayOrUpdateNotification(notif: Notification) {
+        val objectId = notif.driver_data?.object_id ?: return
+        val block = notif.driver_data ?: return
+
+        // 1. LIMPEZA DA NOTIFICAÇÃO ANTERIOR (se houver)
+        // Cancela o agendamento de limpeza anterior para este ID
+        cleanupRunnables[objectId]?.let { handler.removeCallbacks(it) }
+        // Para a animação visual e o som da notificação anterior
+        // Como estamos focando em um alerta por vez, paramos o "mostRecentDirection"
+        if (mostRecentDirection != Direction.NULL) {
+            stopVisualNotification(mostRecentDirection)
+            SoundManager.stop()
+        }
+
+        // 2. EXTRAÇÃO DOS DADOS PARA A UI
+        val dir = when (block.object_direction.lowercase()) {
+            "left" -> Direction.LEFT
+            "right" -> Direction.RIGHT
+            "front" -> Direction.TOP
+            "rear" -> Direction.BOTTOM
+            else -> Direction.TOP
+        }
+        val intensity = when (block.risk_level.lowercase()) {
+            "low" -> 0
+            "medium" -> 1
+            else -> 2 // high
+        }
+        val obj = when (block.object_type.lowercase()) {
+            "human" -> Objects.HUMAN
+            "bike" -> Objects.BIKE
+            "vehicle" -> Objects.VEHICLE
+            else -> Objects.VEHICLE
+        }
+
+        // 3. EXIBIÇÃO DA NOVA NOTIFICAÇÃO
+        val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
+        if (intensity == 0) {
+            if (prefs.getBoolean("notif_visual-baixo", true)) notifyVisual(dir, intensity, obj)
+            if (prefs.getBoolean("notif_sonora-baixo", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+        } else if (intensity == 1) {
+            if (prefs.getBoolean("notif_visual-medio", true)) notifyVisual(dir, intensity, obj)
+            if (prefs.getBoolean("notif_sonora-medio", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+        } else {
+            if (prefs.getBoolean("notif_visual-alto", true)) notifyVisual(dir, intensity, obj)
+            if (prefs.getBoolean("notif_sonora-alto", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
+        }
+
+        // 4. ATUALIZAÇÃO DE ESTADO
+        mostRecentDirection = dir // Mantemos isso para saber qual animação parar
+        activeNotifications[objectId] = notif // Adiciona/atualiza a notificação no mapa
+
+        // 5. AGENDAMENTO DA LIMPEZA FUTURA
+        val delayMillis = 5000L // Duração da notificação na tela
+        val runnable = Runnable {
+            // Verifica se a notificação que agendou esta limpeza ainda é a ativa
+            if (activeNotifications[objectId] == notif) {
+                stopVisualNotification(dir)
+                SoundManager.stop()
+                activeNotifications.remove(objectId)
+                cleanupRunnables.remove(objectId)
+                if (mostRecentDirection == dir) {
+                    mostRecentDirection = Direction.NULL
+                }
+            }
+        }
+        handler.postDelayed(runnable, delayMillis)
+        cleanupRunnables[objectId] = runnable // Armazena o runnable para poder cancelá-lo
     }
 
     fun notifyVisual(direction: Direction, intensity: Int, incomingObject: Objects){
@@ -539,6 +567,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun refreshNotificationTimeout(objectId: String) {
+        val existingRunnable = cleanupRunnables[objectId]
+        val existingNotif = activeNotifications[objectId]
+
+        if (existingRunnable != null && existingNotif != null) {
+            Log.d("NotificationLogic", "Refrescando notificação para o ID: $objectId")
+            // Cancela o agendamento de limpeza anterior
+            handler.removeCallbacks(existingRunnable)
+            // Reagenda o mesmo runnable para mais 5 segundos a partir de agora
+            handler.postDelayed(existingRunnable, 5000L)
+        }
+    }
+
+    private fun shouldDisplayNotification(newNotif: Notification, existingNotif: Notification?): Boolean {
+        // Se não há notificação existente para este ID, sempre exiba a nova.
+        if (existingNotif == null) {
+            return true
+        }
+
+        val newRiskLevel = newNotif.driver_data?.risk_level ?: "low"
+        val existingRiskLevel = existingNotif.driver_data?.risk_level ?: "low"
+
+        val newRiskPriority = getRiskPriority(newRiskLevel)
+        val existingRiskPriority = getRiskPriority(existingRiskLevel)
+
+        // Regra 1: Se o risco aumentou, atualize a notificação.
+        if (newRiskPriority != existingRiskPriority) {
+            return true
+        }
+
+        // Se a nova notificação não for mais importante, não a exiba.
+        return false
+    }
+
     fun combinedToAppNotification(data: CombinedNotification): Notification {
         val bsm = data.bsm.value.coreData
         val psm = data.psm
@@ -584,6 +646,7 @@ class MainActivity : AppCompatActivity() {
         val objectCoords = Notification.Coordinates(latitude = objectLat, longitude = objectLon, speed = objectSpeed)
 
         val driverData = Notification.Driver(
+            object_id = psm.id,
             risk_level = risk,
             object_direction = dirString,
             object_type = objType,
@@ -647,3 +710,12 @@ class MainActivity : AppCompatActivity() {
         }
         return a
     }
+
+private fun getRiskPriority(riskLevel: String): Int {
+    return when (riskLevel.lowercase()) {
+        "high" -> 3
+        "medium" -> 2
+        "low" -> 1
+        else -> 0
+    }
+}

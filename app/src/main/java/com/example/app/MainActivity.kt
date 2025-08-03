@@ -63,8 +63,8 @@ class MainActivity : AppCompatActivity() {
 
     private val combinedNotificationAdapter = moshi.adapter(CombinedNotification::class.java)
 
-    private val serverIp = "192.168.0.53" // 192.168.0.53
-    private val serverPort = 8080 // 8080
+    private val serverIp = "10.0.2.2" // 192.168.0.53
+    private val serverPort = 3001 // 8080
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,6 +92,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun connectTcpSocket() {
         connectionJob = lifecycleScope.launch(Dispatchers.IO) {
+
             while (shouldReconnect) {
                 try {
                     Log.d("TCP", "Tentando conectar a $serverIp:$serverPort...")
@@ -103,48 +104,51 @@ class MainActivity : AppCompatActivity() {
                     Log.d("TCP", "Conexão estabelecida.")
 
                     val reader = InputStreamReader(tcpSocket!!.getInputStream())
-                    val jsonMessageBuilder = StringBuilder()
-                    var braceCount = 0
-                    var isInsideJson = false
-
                     val buffer = CharArray(4096)
+                    val jsonBuffer = StringBuilder()
                     var charsRead: Int = 0
 
-                    while (tcpSocket!!.isConnected && (reader.read(buffer).also { charsRead = it } != -1)) {
-                        for (i in 0 until charsRead) {
-                            val char = buffer[i]
+                    while (tcpSocket!!.isConnected && reader.read(buffer).also { charsRead = it } != -1) {
 
-                            if (!isInsideJson) {
-                                if (char == '{') {
-                                    isInsideJson = true
-                                    jsonMessageBuilder.append(char)
-                                    braceCount++
-                                }
-                            } else {
-                                jsonMessageBuilder.append(char)
-                                if (char == '{') {
-                                    braceCount++
-                                } else if (char == '}') {
-                                    braceCount--
-                                }
+                        jsonBuffer.append(buffer, 0, charsRead)
 
+                        while (true) {
+                            val startIdx = jsonBuffer.indexOf('{')
+
+                            if (startIdx == -1) {
+                                jsonBuffer.clear()
+                                break
+                            }
+
+                            var braceCount = 0
+                            var endIdx = -1
+
+                            for (i in startIdx until jsonBuffer.length) {
+                                when (jsonBuffer[i]) {
+                                    '{' -> braceCount++
+                                    '}' -> braceCount--
+                                }
                                 if (braceCount == 0) {
-                                    val completeJson = jsonMessageBuilder.toString()
-                                    isInsideJson = false
-                                    jsonMessageBuilder.clear()
-
-                                    if (completeJson.contains("\"psm\"") && completeJson.contains("\"bsm\"")) {
-                                        Log.d("TCP", "Mensagem válida encontrada: $completeJson")
-                                        processMessage(completeJson)
-                                    } else {
-                                        Log.d("TCP", "Mensagem ignorada (não contém 'psm' e 'bsm'): $completeJson")
-                                    }
+                                    endIdx = i
+                                    break
                                 }
+                            }
+
+                            if (endIdx != -1) {
+
+                                val completeJson = jsonBuffer.substring(startIdx, endIdx + 1)
+
+                                jsonBuffer.delete(0, endIdx + 1)
+
+                                //Log.d("TCP", "JSON completo extraído: $completeJson")
+                                processMessage(completeJson)
+
+                            } else {
+                                break
                             }
                         }
                     }
-
-                } catch (e: IOException) {
+                } catch (e: Exception) {
                     if (!shouldReconnect) break
                     Log.e("TCP", "Erro de conexão: ${e.message}")
                     withContext(Dispatchers.Main) {

@@ -244,4 +244,6 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:srcCompat="@drawable/facens_logo_quadrado_removebg_preview" />
 
+    <include layout="@layout/notification_child_zone" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

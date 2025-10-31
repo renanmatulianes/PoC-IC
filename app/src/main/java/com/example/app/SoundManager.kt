@@ -44,6 +44,32 @@ object SoundManager {
         }
     }
 
+    fun playZoneSound(context: Context, tipo: ZonaTipo) {
+        stop() // Garante que nenhum outro som de alerta esteja tocando
+
+        // Escolhe o recurso de áudio baseado no tipo de zona
+        val resId = when (tipo) {
+            ZonaTipo.CRIANCA -> R.raw.zona_crianca
+            ZonaTipo.CICLISTA -> R.raw.zona_ciclista
+        }
+
+        if (resId == 0) {
+            Log.w("SoundManager", "Recurso de áudio não encontrado para o tipo: $tipo")
+            return
+        }
+
+        mediaPlayer = MediaPlayer.create(context, resId).apply {
+            isLooping = false
+            setOnCompletionListener { mp ->
+                if (mediaPlayer == mp) {
+                    mp.release()
+                    mediaPlayer = null
+                }
+            }
+            start()
+        }
+    }
+
     fun stop() {
         try {
             mediaPlayer?.let {

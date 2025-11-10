@@ -1,26 +1,13 @@
-// ARQUIVO ATUALIZADO: MainActivity.kt
-
 package com.example.app
 
-import android.animation.AnimatorSet
-import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.view.View
-import android.view.animation.LinearInterpolator
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.example.app.model.BsmNotification
 import com.example.app.model.CombinedNotification
-import com.example.app.model.Notification
-import com.example.app.model.PsmNotification
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,35 +16,28 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStreamReader
 import java.net.Socket
-import java.time.Instant
-import java.time.Duration
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.location.Location
-import android.view.animation.AccelerateDecelerateInterpolator
 import java.io.IOException
 import java.lang.StringBuilder
 import com.example.app.databinding.ActivityMainBinding
 import com.example.app.databinding.NotificationChildZoneBinding
 import com.example.app.model.TimNotification
+import com.example.app.rules.effects.NotificationUI
+import com.example.app.rules.Orchestrator
+import com.example.app.rules.Rule
+import com.example.app.rules.effects.*
+import com.example.app.rules.filters.*
+import com.example.app.rules.context.NotificationContext
+import com.example.app.ui.VisualAlertManager
+import com.example.app.processing.combinedToAppNotification
 
 enum class Direction { LEFT, RIGHT, TOP, BOTTOM, NULL}
 enum class Objects {HUMAN, VEHICLE, MOTORCYCLE, BIKE, NULL}
 enum class ZonaTipo { CRIANCA, CICLISTA }
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), NotificationUI {
 
-    private val pulseAnimators = mutableMapOf<Direction, ValueAnimator>()
-    private val arrowAnimators = mutableMapOf<Direction, ValueAnimator>()
-
-    private var mostRecentDirection : Direction = Direction.NULL
-    private var mostRecentNotification : Notification? = null
-
-    private val handler = Handler(Looper.getMainLooper())
-
-    private val activeNotifications = mutableMapOf<String, Notification>()
-    private val cleanupRunnables = mutableMapOf<String, Runnable>()
+    private lateinit var orchestrator: Orchestrator
 
     private var tcpSocket: Socket? = null
     private var connectionJob: Job? = null
@@ -68,11 +48,7 @@ class MainActivity : AppCompatActivity() {
     private var zoneAlertConnectionJob: Job? = null
 
     private lateinit var binding: ActivityMainBinding
-    private var childZoneNotificationBinding: NotificationChildZoneBinding? = null
-    // Variável para controlar a animação da borda amarela
-    private var yellowBorderAnimator: ObjectAnimator? = null
-    // Variável para controlar a animação de "respiração" do ícone
-    private var iconBreathingAnimator: AnimatorSet? = null
+    private lateinit var visualAlertManager: VisualAlertManager
 
     private val moshi  = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
@@ -93,6 +69,13 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        val childZoneBinding = NotificationChildZoneBinding.bind(binding.root.findViewById(R.id.child_zone_notification_layout))
+
+        visualAlertManager = VisualAlertManager(this, binding, childZoneBinding)
+
+        orchestrator = Orchestrator(this)
+        setupRules()
+
         connectToObuServer()
         connectToZoneAlertServer()
 
@@ -101,7 +84,6 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
-        childZoneNotificationBinding = NotificationChildZoneBinding.bind(binding.root.findViewById(R.id.child_zone_notification_layout))
 //        alerta_zona(true, ZonaTipo.CICLISTA, "Atenção: Área escolar próxima")
     }
 
@@ -115,8 +97,83 @@ class MainActivity : AppCompatActivity() {
         } catch (e: IOException) {
             Log.e("MainActivity", "Erro ao fechar o socket", e)
         }
-        yellowBorderAnimator?.cancel()
-        iconBreathingAnimator?.cancel()
+
+        visualAlertManager.destroy()
+    }
+
+    private fun setupRules() {
+
+        val PRIORITY_HIGH = 30
+        val PRIORITY_MEDIUM = 20
+        val PRIORITY_LOW = 10
+        val PRIORITY_ZONE = 30
+
+        // --- REGRA 1: ALERTA DE COLISÃO DE ALTO RISCO ---
+        val highRiskRule = Rule(
+            name = "High Risk Collision Alert",
+            priority = PRIORITY_HIGH,
+            rootFilter = RiskLevelFilter("high"),
+            effects = listOf(
+                StopPreviousAlertsEffect(), // Limpa alertas antigos primeiro
+                VisualNotificationEffect(),
+                SoundNotificationEffect()
+                // Poderíamos adicionar um HapticFeedbackEffect aqui no futuro
+            )
+        )
+
+        // --- REGRA 2: ALERTA DE COLISÃO DE MÉDIO RISCO ---
+        val mediumRiskRule = Rule(
+            name = "Medium Risk Collision Alert",
+            priority = PRIORITY_MEDIUM,
+            rootFilter = RiskLevelFilter("medium"),
+            effects = listOf(
+                StopPreviousAlertsEffect(),
+                VisualNotificationEffect(),
+                SoundNotificationEffect()
+            )
+        )
+
+        // --- REGRA 3: ALERTA DE COLISÃO DE BAIXO RISCO ---
+        val lowRiskRule = Rule(
+            name = "Low Risk Collision Alert",
+            priority = PRIORITY_LOW,
+            rootFilter = RiskLevelFilter("low"),
+            effects = listOf(
+                StopPreviousAlertsEffect(),
+                VisualNotificationEffect(),
+                SoundNotificationEffect()
+                // Poderíamos ter efeitos diferentes aqui, ex: só visual
+            )
+        )
+
+        // --- REGRA 4: ALERTA DE ZONA ESCOLAR (TIM) ---
+        val childZoneRule = Rule(
+            name = "Child Zone Alert",
+            priority = PRIORITY_ZONE,
+            rootFilter = ZoneTypeFilter(ZonaTipo.CRIANCA),
+            effects = listOf(
+                StopPreviousAlertsEffect(), // Para o alerta de colisão, se houver
+                ExpiringZoneAlertEffect(ZonaTipo.CRIANCA, durationMs = 10000L)
+            )
+        )
+
+        // --- REGRA 5: ALERTA DE CICLISTA (TIM) ---
+        val cyclistZoneRule = Rule(
+            name = "Cyclist Zone Alert",
+            priority = PRIORITY_ZONE,
+            rootFilter = ZoneTypeFilter(ZonaTipo.CICLISTA),
+            effects = listOf(
+                StopPreviousAlertsEffect(),
+                ExpiringZoneAlertEffect(ZonaTipo.CICLISTA, durationMs = 10000L)
+            )
+        )
+
+        orchestrator.addRule(highRiskRule)
+        orchestrator.addRule(mediumRiskRule)
+        orchestrator.addRule(lowRiskRule)
+        orchestrator.addRule(childZoneRule)
+        orchestrator.addRule(cyclistZoneRule)
+
     }
 
     private fun connectToObuServer() {
@@ -199,92 +256,18 @@ class MainActivity : AppCompatActivity() {
         val combinedNotification = try {
             combinedNotificationAdapter.fromJson(jsonString)
         } catch (e: Exception) {
-            Log.e("JSON", "Erro ao fazer o parsing do JSON: $jsonString", e)
-            null
+            Log.e("JSON", "Erro ao fazer o parsing do JSON (OBU): $jsonString", e)
+            return // Sai se o JSON for inválido
         }
 
         combinedNotification?.let { notifData ->
-            // O ID do objeto (pedestre) vem do PSM e é a nossa chave.
-            val objectId = notifData.psm.id
-            val newNotif = combinedToAppNotification(notifData)
+            val appNotification = combinedToAppNotification(notifData)
 
-            val existingNotif = activeNotifications[objectId]
+            val context = NotificationContext(psmBsmNotification = appNotification)
 
-            // --- LÓGICA PRINCIPAL: DECIDIR SE ATUALIZA OU NÃO ---
-            if (shouldDisplayNotification(newNotif, existingNotif)) {
-                withContext(Dispatchers.Main) {
-                    displayOrUpdateNotification(newNotif)
-                }
+            withContext(Dispatchers.Main) {
+                orchestrator.processContext(context)
             }
-            else if (existingNotif != null) {
-                // Caso B: Risco é o mesmo ou menor. Apenas "refresca" a notificação existente.
-                withContext(Dispatchers.Main) {
-                    refreshNotificationTimeout(objectId)
-                }
-            }
-        }
-    }
-
-    fun alerta_zona(activate: Boolean, tipo_zona: ZonaTipo, message: String? = null) {
-        // Referências para o conteúdo (ícone e texto)
-        val notificationContentLayout = childZoneNotificationBinding?.childZoneNotificationLayout
-        val iconZone = childZoneNotificationBinding?.iconSchoolZone // Reutilizando o ImageView
-
-        if (notificationContentLayout == null || iconZone == null) {
-            Log.e("MainActivity", "Erro: Layout de conteúdo da notificação não encontrado.")
-            return
-        }
-
-        if (activate) {
-            // 1. Escolhe a imagem e o texto padrão com base no tipo
-            val iconResId: Int
-            val defaultText: String
-
-            when (tipo_zona) {
-                ZonaTipo.CRIANCA -> {
-                    iconResId = R.drawable.school_zone_sign
-                    defaultText = "Atenção: Área escolar próxima"
-                }
-                ZonaTipo.CICLISTA -> {
-                    iconResId = R.drawable.cyclist_zone_sign // Sua nova imagem
-                    defaultText = "Atenção: Ciclistas na via"
-                }
-            }
-
-            // 2. Configura a UI
-            iconZone.setImageResource(iconResId)
-
-            // 3. Ativa o conteúdo e o traz para a frente
-            notificationContentLayout.visibility = View.VISIBLE
-            notificationContentLayout.bringToFront()
-
-            // 4. Animação de "respiração" para o ícone
-            val scaleX = ObjectAnimator.ofFloat(iconZone, "scaleX", 1.0f, 1.05f, 1.0f)
-            val scaleY = ObjectAnimator.ofFloat(iconZone, "scaleY", 1.0f, 1.05f, 1.0f)
-            scaleX.duration = 3000
-            scaleY.duration = 3000
-            scaleX.repeatCount = ValueAnimator.INFINITE
-            scaleY.repeatCount = ValueAnimator.INFINITE
-            scaleX.interpolator = LinearInterpolator()
-            scaleY.interpolator = LinearInterpolator()
-
-            iconBreathingAnimator = AnimatorSet().apply {
-                playTogether(scaleX, scaleY)
-                start()
-            }
-
-            // 5. Toca o som correto
-            SoundManager.playZoneSound(this, tipo_zona)
-
-        } else {
-            Log.d("MainActivity", "Desativando alerta de zona.")
-
-            // Desativa o conteúdo
-            notificationContentLayout.visibility = View.GONE
-
-            // Cancela a animação do ícone se estiver rodando
-            iconBreathingAnimator?.cancel()
-            SoundManager.stop()
         }
     }
 
@@ -367,557 +350,45 @@ class MainActivity : AppCompatActivity() {
             timNotificationAdapter.fromJson(jsonString)
         } catch (e: Exception) {
             Log.e("JSON_TIM", "Erro ao fazer o parsing do JSON de Alerta de Zona: $jsonString", e)
-            null
+            return // Sai se o JSON for inválido
         }
 
-        timNotification?.dataFrames?.firstOrNull()?.content?.advisoryText?.let { text ->
-            // Analisa o texto para determinar o tipo de alerta
-            val tipo: ZonaTipo
-            if (text.contains("crianças", ignoreCase = true) || text.contains("escolar", ignoreCase = true)) {
-                tipo = ZonaTipo.CRIANCA
-            } else if (text.contains("ciclista", ignoreCase = true) || text.contains("ciclistas", ignoreCase = true)) {
-                tipo = ZonaTipo.CICLISTA
-            } else {
-                return@let // Se não for um texto conhecido, não faz nada
-            }
+        timNotification?.let {
+            // 1. Cria o contexto com a notificação TIM.
+            val context = NotificationContext(timNotification = it)
 
-            // Garante que a UI seja atualizada na thread principal
+            // 2. Entrega ao orquestrador.
             withContext(Dispatchers.Main) {
-                alerta_zona(true, tipo, text)
+                orchestrator.processContext(context)
             }
 
-            // Lógica para desativar a notificação depois de um tempo
-            delay(10000L)
-            withContext(Dispatchers.Main) {
-                alerta_zona(false, tipo)
-            }
         }
     }
 
-    private fun displayOrUpdateNotification(notif: Notification) {
-        val objectId = notif.driver_data?.object_id ?: return
-        val block = notif.driver_data ?: return
-
-        // 1. LIMPEZA DA NOTIFICAÇÃO ANTERIOR (se houver)
-        // Cancela o agendamento de limpeza anterior para este ID
-        cleanupRunnables[objectId]?.let { handler.removeCallbacks(it) }
-        // Para a animação visual e o som da notificação anterior
-        // Como estamos focando em um alerta por vez, paramos o "mostRecentDirection"
-        if (mostRecentDirection != Direction.NULL) {
-            stopVisualNotification(mostRecentDirection)
-            SoundManager.stop()
-        }
-
-        // 2. EXTRAÇÃO DOS DADOS PARA A UI
-        val dir = when (block.object_direction.lowercase()) {
-            "left" -> Direction.LEFT
-            "right" -> Direction.RIGHT
-            "front" -> Direction.TOP
-            "rear" -> Direction.BOTTOM
-            else -> Direction.TOP
-        }
-        val intensity = when (block.risk_level.lowercase()) {
-            "low" -> 0
-            "medium" -> 1
-            else -> 2 // high
-        }
-        val obj = when (block.object_type.lowercase()) {
-            "human" -> Objects.HUMAN
-            "bike" -> Objects.BIKE
-            "vehicle" -> Objects.VEHICLE
-            else -> Objects.VEHICLE
-        }
-
-        // 3. EXIBIÇÃO DA NOVA NOTIFICAÇÃO
-        val prefs = getSharedPreferences("driverPref", MODE_PRIVATE)
-        if (intensity == 0) {
-            if (prefs.getBoolean("notif_visual-baixo", true)) notifyVisual(dir, intensity, obj)
-            if (prefs.getBoolean("notif_sonora-baixo", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
-        } else if (intensity == 1) {
-            if (prefs.getBoolean("notif_visual-medio", true)) notifyVisual(dir, intensity, obj)
-            if (prefs.getBoolean("notif_sonora-medio", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
-        } else {
-            if (prefs.getBoolean("notif_visual-alto", true)) notifyVisual(dir, intensity, obj)
-            if (prefs.getBoolean("notif_sonora-alto", true)) SoundManager.playSound(this@MainActivity, dir, obj, intensity)
-        }
-
-        // 4. ATUALIZAÇÃO DE ESTADO
-        mostRecentDirection = dir // Mantemos isso para saber qual animação parar
-        activeNotifications[objectId] = notif // Adiciona/atualiza a notificação no mapa
-
-        // 5. AGENDAMENTO DA LIMPEZA FUTURA
-        val delayMillis = 5000L // Duração da notificação na tela
-        val runnable = Runnable {
-            // Verifica se a notificação que agendou esta limpeza ainda é a ativa
-            if (activeNotifications[objectId] == notif) {
-                stopVisualNotification(dir)
-                SoundManager.stop()
-                activeNotifications.remove(objectId)
-                cleanupRunnables.remove(objectId)
-                if (mostRecentDirection == dir) {
-                    mostRecentDirection = Direction.NULL
-                }
-            }
-        }
-        handler.postDelayed(runnable, delayMillis)
-        cleanupRunnables[objectId] = runnable // Armazena o runnable para poder cancelá-lo
+    override fun showVisualAlert(direction: Direction, intensity: Int, obj: Objects) {
+        visualAlertManager.showVisualAlert(direction, intensity, obj)
     }
 
-    fun notifyVisual(direction: Direction, intensity: Int, incomingObject: Objects){
-        val carImg = findViewById<ImageView>(R.id.carImg)
-
-        if (direction == Direction.TOP && (incomingObject != Objects.NULL || intensity != -1)){
-            val arrowTopImg = findViewById<ImageView>(R.id.topArrow)
-
-            carImg.apply {
-                translationY = 150f
-            }
-
-            arrowTopImg.apply {
-                translationY = 150f
-            }
-        }
-        else if (direction == Direction.BOTTOM && (incomingObject != Objects.NULL || intensity != -1)) {
-            val arrowBottomImg = findViewById<ImageView>(R.id.bottomArrow)
-
-            carImg.apply {
-                translationY = -150f
-            }
-
-            arrowBottomImg.apply {
-                translationY = -150f
-            }
-        }
-
-        startArrowBlink(direction, intensity)
-
-        if (intensity != -1)
-            startPulse(direction, intensity)
-
-        if (incomingObject != Objects.NULL)
-            showObject(direction, incomingObject)
+    override fun playSoundAlert(direction: Direction, intensity: Int, obj: Objects) {
+        SoundManager.playSound(this, direction, obj, intensity)
     }
 
-    fun stopVisualNotification(directionArg: Direction = mostRecentDirection) {
-
-        if (directionArg == Direction.NULL) return
-
-        stopArrowBlink(directionArg)
-        stopPulse(directionArg)
-        removeObjectImg(directionArg)
-
-        val carImg = findViewById<ImageView>(R.id.carImg)
-        carImg.translationY = 0f
-
-        when (directionArg) {
-            Direction.TOP    -> findViewById<ImageView>(R.id.topArrow).translationY    = 0f
-            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomArrow).translationY = 0f
-            else -> {}
-        }
-
-        findViewById<ImageView>(R.id.settingsIcon).visibility = View.VISIBLE
+    override fun showZoneAlert(activate: Boolean, zoneType: ZonaTipo, message: String?) {
+        visualAlertManager.displayZoneAlert(activate, zoneType, message)
     }
 
-    fun startPulse(direction: Direction, intensity : Int) {
-        val view = when (direction) {
-            Direction.LEFT   -> findViewById<View>(R.id.leftPulse)
-            Direction.RIGHT  -> findViewById<View>(R.id.rightPulse)
-            Direction.TOP    -> findViewById<View>(R.id.topPulse)
-            Direction.BOTTOM -> findViewById<View>(R.id.bottomPulse)
-            Direction.NULL -> findViewById<View>(R.id.bottomPulse)
-        }
-
-        pulseAnimators[direction]?.cancel()
-
-        val startColor = when (intensity) {
-            0 -> ContextCompat.getColor(this, R.color.alert_gray)
-            1 -> ContextCompat.getColor(this, R.color.alert_yellow)
-            else -> ContextCompat.getColor(this, R.color.alert_red)
-        }
-        val endColor = ContextCompat.getColor(this, android.R.color.transparent)
-
-        val gd = (ContextCompat.getDrawable(this, R.drawable.gradient)!!
-            .mutate() as GradientDrawable).apply {
-
-            colors = intArrayOf(startColor, endColor)
-
-            when (direction) {
-                Direction.LEFT   -> setGradientCenter(0f,   0.5f)
-                Direction.RIGHT  -> setGradientCenter(1f,   0.5f)
-                Direction.TOP    -> setGradientCenter(0.5f, 0f)
-                Direction.BOTTOM -> setGradientCenter(0.5f, 1f)
-                else -> setGradientCenter(0.5f, 1f)
-            }
-        }
-
-        view.background = gd
-        view.visibility = View.VISIBLE
-
-        view.post {
-
-            val (minSize, maxSize) = if (direction == Direction.LEFT || direction == Direction.RIGHT) {
-                350f to 400f
-            } else {
-                200f to 300f
-            }
-
-            val animTime : Long
-
-            when (intensity) {
-                0 -> animTime = 800L
-                1 -> animTime = 500L
-                2 -> animTime = 300L
-                else -> animTime = 800L
-            }
-
-            val anim = ValueAnimator.ofFloat(minSize, maxSize).apply {
-                duration = animTime
-                repeatMode = ValueAnimator.REVERSE
-                repeatCount = ValueAnimator.INFINITE
-                interpolator = LinearInterpolator()
-                addUpdateListener { va ->
-                    gd.gradientRadius = va.animatedValue as Float
-                    view.invalidate()
-                }
-                start()
-            }
-
-            pulseAnimators[direction] = anim
-        }
+    override fun playZoneSound(zoneType: ZonaTipo) {
+        SoundManager.playZoneSound(this, zoneType)
     }
 
-    fun stopPulse(direction: Direction) {
-        pulseAnimators[direction]?.cancel()
-        pulseAnimators.remove(direction)
-
-        val view = when (direction) {
-            Direction.LEFT   -> findViewById<View>(R.id.leftPulse)
-            Direction.RIGHT  -> findViewById<View>(R.id.rightPulse)
-            Direction.TOP    -> findViewById<View>(R.id.topPulse)
-            Direction.BOTTOM -> findViewById<View>(R.id.bottomPulse)
-            else -> findViewById<View>(R.id.bottomPulse)
-        }
-        view.visibility = View.GONE
+    override fun stopAllAlerts() {
+        visualAlertManager.stopAllVisuals()
+        SoundManager.stop()
     }
 
-    fun startArrowBlink(direction: Direction, intensity: Int) {
-        val arrowView = when (direction) {
-            Direction.LEFT   -> findViewById<ImageView>(R.id.leftArrow)
-            Direction.RIGHT  -> findViewById<ImageView>(R.id.rightArrow)
-            Direction.TOP    -> findViewById<ImageView>(R.id.topArrow)
-            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomArrow)
-            else -> findViewById<ImageView>(R.id.bottomArrow)
-        }
-
-        arrowView.apply {
-            when (direction) {
-                Direction.LEFT   -> scaleX = -1f
-                Direction.RIGHT  -> scaleX = 1f
-                Direction.TOP    -> {
-                    scaleX = 1f
-                    rotation = -90f
-                }
-                Direction.BOTTOM -> {
-                    scaleX = 1f
-                    rotation = 90f
-                }
-                else -> {}
-            }
-            alpha = 0f
-            visibility = View.VISIBLE
-        }
-
-        arrowAnimators[direction]?.cancel()
-
-        val animDuration : Long
-
-        when (intensity) {
-            0 -> animDuration = 400L
-            1 -> animDuration = 300L
-            2 -> animDuration = 200L
-            else -> animDuration = 400L
-        }
-
-        val anim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = animDuration
-            repeatMode = ValueAnimator.REVERSE
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            addUpdateListener { va ->
-                arrowView.alpha = va.animatedValue as Float
-            }
-            start()
-        }
-        arrowAnimators[direction] = anim
-    }
-
-    fun stopArrowBlink(direction: Direction) {
-        arrowAnimators[direction]?.cancel()
-        arrowAnimators.remove(direction)
-        val arrowView = when (direction) {
-            Direction.LEFT   -> findViewById<ImageView>(R.id.leftArrow)
-            Direction.RIGHT  -> findViewById<ImageView>(R.id.rightArrow)
-            Direction.TOP    -> findViewById<ImageView>(R.id.topArrow)
-            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomArrow)
-            else -> findViewById<ImageView>(R.id.bottomArrow)
-        }
-        arrowView.visibility = View.GONE
-    }
-
-    fun showObject(direction: Direction, incomingObject : Objects){
-
-        val objectView = when (direction) {
-            Direction.LEFT   -> findViewById<ImageView>(R.id.leftObject)
-            Direction.RIGHT  -> findViewById<ImageView>(R.id.rightObject)
-            Direction.TOP    -> findViewById<ImageView>(R.id.topObject)
-            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomObject)
-            else -> findViewById<ImageView>(R.id.bottomObject)
-        }
-
-        val resId = when (incomingObject) {
-            Objects.VEHICLE     -> R.drawable.vehicle_icon
-            Objects.MOTORCYCLE  -> R.drawable.motorcycle
-            Objects.BIKE        -> R.drawable.cyclist
-            Objects.HUMAN       -> R.drawable.pedestrian
-            else                -> 0
-        }
-
-        objectView.apply {
-            setImageResource(resId)
-            elevation = 6f
-            bringToFront()
-            alpha = 0f
-            visibility = View.VISIBLE
-            animate().alpha(1f).setDuration(250).start()
-
-            when (direction) {
-                Direction.RIGHT  -> scaleX = -1f
-                else -> {}
-            }
-        }
-    }
-
-    fun removeObjectImg(direction: Direction){
-        val objectView = when (direction) {
-            Direction.LEFT   -> findViewById<ImageView>(R.id.leftObject)
-            Direction.RIGHT  -> findViewById<ImageView>(R.id.rightObject)
-            Direction.TOP    -> findViewById<ImageView>(R.id.topObject)
-            Direction.BOTTOM -> findViewById<ImageView>(R.id.bottomObject)
-            else -> findViewById<ImageView>(R.id.bottomObject)
-        }
-
-        objectView.apply {
-            visibility = View.GONE
-        }
-    }
-
-    fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val res = FloatArray(1)
-        Location.distanceBetween(lat1, lon1, lat2, lon2, res)
-        return res[0].toDouble()
-    }
-
-    fun timeToCollision(notification: Notification?): Double? {
-        val userLocation = notification?.location ?: return null
-        val driverData = notification.driver_data ?: return null
-        val objectCoords = driverData.object_coordinates
-        val objectSpeed = objectCoords.speed ?: return null
-        val userSpeed = notification.driver_speed.toDouble()
-        val direction = driverData.object_direction.lowercase()
-
-        val dist = distanceMeters(
-            userLocation.latitude, userLocation.longitude,
-            objectCoords.latitude, objectCoords.longitude
-        )
-
-        val vRel = when (direction) {
-            "front", "left", "right" -> {
-                userSpeed + objectSpeed
-            }
-            "rear" -> {
-                if (objectSpeed > userSpeed) {
-                    objectSpeed - userSpeed
-                } else {
-                    -1.0
-                }
-            }
-            else -> -1.0
-        }
-
-        return if (vRel > 0.0) dist / vRel else null
-    }
-
-    fun isNotificationMoreImportant(oldN: Notification?, newN: Notification): Boolean {
-        if (oldN == null) return true
-
-        val ttcOld = timeToCollision(oldN)
-        val ttcNew = timeToCollision(newN)
-
-        val tsOld = Instant.parse(oldN.timestamp)
-        val tsNew = Instant.parse(newN.timestamp)
-        val elapsedMs = Duration.between(tsOld, tsNew).toMillis().coerceAtLeast(0L)
-        val elapsedSec = elapsedMs / 1000.0
-
-        val remOld = ttcOld?.minus(elapsedSec)
-
-        return when {
-            remOld != null && remOld <= 0.0 -> true
-            remOld == null && ttcNew != null -> true
-            remOld != null && ttcNew == null -> false
-            remOld != null && ttcNew != null -> ttcNew < remOld
-            else -> false
-        }
-    }
-
-    private fun refreshNotificationTimeout(objectId: String) {
-        val existingRunnable = cleanupRunnables[objectId]
-        val existingNotif = activeNotifications[objectId]
-
-        if (existingRunnable != null && existingNotif != null) {
-            Log.d("NotificationLogic", "Refrescando notificação para o ID: $objectId")
-            // Cancela o agendamento de limpeza anterior
-            handler.removeCallbacks(existingRunnable)
-            // Reagenda o mesmo runnable para mais 5 segundos a partir de agora
-            handler.postDelayed(existingRunnable, 5000L)
-        }
-    }
-
-    private fun shouldDisplayNotification(newNotif: Notification, existingNotif: Notification?): Boolean {
-        // Se não há notificação existente para este ID, sempre exiba a nova.
-        if (existingNotif == null) {
-            return true
-        }
-
-        val newRiskLevel = newNotif.driver_data?.risk_level ?: "low"
-        val existingRiskLevel = existingNotif.driver_data?.risk_level ?: "low"
-
-        val newRiskPriority = getRiskPriority(newRiskLevel)
-        val existingRiskPriority = getRiskPriority(existingRiskLevel)
-
-        // Regra 1: Se o risco aumentou, atualize a notificação.
-        if (newRiskPriority != existingRiskPriority) {
-            return true
-        }
-
-        // Se a nova notificação não for mais importante, não a exiba.
-        return false
-    }
-
-    fun combinedToAppNotification(data: CombinedNotification): Notification {
-        val bsm = data.bsm.value.coreData
-        val psm = data.psm
-
-        // --- 1. Conversão de Unidades ---
-        // Dados do veículo (motorista) do BSM
-        val userLat = bsm.lat / 10_000_000.0
-        val userLon = bsm.long / 10_000_000.0
-        val userSpeed = bsm.speed.toFloat() * 0.02f
-        val userHeading = bsm.heading * 0.0125 // Unidades de 0.0125 graus
-
-        // Dados do objeto (pedestre) do PSM
-        val objectLat = psm.position.latitude / 10_000_000.0
-        val objectLon = psm.position.longitude / 10_000_000.0
-        val objectSpeed = psm.speed * 0.02
-
-        // --- 2. Determinar Tipo do Objeto ---
-        val objType = when {
-            psm.basicType.contains("PEDESTRIAN", ignoreCase = true) -> "HUMAN"
-            psm.basicType.contains("CYCLIST", ignoreCase = true) -> "BIKE"
-            // Adicionar mais tipos se necessário
-            else -> "HUMAN"
-        }
-
-        // --- 3. Calcular Direção Relativa (dirString) ---
-        // Azimute do veículo para o pedestre
-        val bearingToObject = calculateBearing(userLat, userLon, objectLat, objectLon)
-        // Ângulo do pedestre em relação à frente do veículo
-        val relativeAngle = normalizeAngle(bearingToObject - userHeading)
-
-        // Mapear ângulo para direção (front, rear, left, right)
-        val dirString = when {
-            relativeAngle >= -45 && relativeAngle < 45 -> "front"
-            relativeAngle >= 45 && relativeAngle < 135 -> "right"
-            relativeAngle >= 135 || relativeAngle < -135 -> "rear"
-            else -> "left" // -135 to -45
-        }
-
-        val risk = "low"
-
-        // --- 5. Montar o objeto Notification ---
-        val userLocation = Notification.Location(latitude = userLat, longitude = userLon)
-        val objectCoords = Notification.Coordinates(latitude = objectLat, longitude = objectLon, speed = objectSpeed)
-
-        val driverData = Notification.Driver(
-            object_id = psm.id,
-            risk_level = risk,
-            object_direction = dirString,
-            object_type = objType,
-            object_coordinates = objectCoords
-        )
-
-        val timestamp = Instant.now().toString()
-
-        val convertedNotif = Notification(
-            driver_data = driverData,
-            location = userLocation,
-            driver_speed = userSpeed,
-            timestamp = timestamp
-        )
-
-        val ttc = timeToCollision(convertedNotif)
-
-        convertedNotif.driver_data?.risk_level = if (ttc != null) {
-            when {
-                ttc < 4.0 -> "high"
-                ttc <= 8.0 -> "medium"
-                else -> "low"
-            }
-        } else {
-            "low"
-        }
-
-        return convertedNotif
-    }
 
     private fun toast(msg: String) =
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     }
 
-    /**
-     * Calcula o azimute (bearing) inicial em graus de um ponto de partida para um ponto de destino.
-     * O azimute é o ângulo em relação ao Norte verdadeiro, no sentido horário (0-360).
-     */
-    private fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val lat1Rad = Math.toRadians(lat1)
-        val lat2Rad = Math.toRadians(lat2)
-        val deltaLonRad = Math.toRadians(lon2 - lon1)
 
-        val y = Math.sin(deltaLonRad) * Math.cos(lat2Rad)
-        val x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(deltaLonRad)
-
-        val bearingRad = Math.atan2(y, x)
-        return (Math.toDegrees(bearingRad) + 360) % 360 // Normaliza para 0-360
-    }
-
-    /**
-     * Normaliza um ângulo para o intervalo [-180, 180].
-     */
-    private fun normalizeAngle(angle: Double): Double {
-        var a = angle % 360
-        if (a > 180) {
-            a -= 360
-        }
-        if (a <= -180) {
-            a += 360
-        }
-        return a
-    }
-
-private fun getRiskPriority(riskLevel: String): Int {
-    return when (riskLevel.lowercase()) {
-        "high" -> 3
-        "medium" -> 2
-        "low" -> 1
-        else -> 0
-    }
-}

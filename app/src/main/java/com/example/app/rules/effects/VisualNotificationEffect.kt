@@ -1,4 +1,3 @@
-// NOVO ARQUIVO: VisualNotificationEffect.kt
 package com.example.app.rules.effects
 
 import com.example.app.Direction

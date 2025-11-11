@@ -1,11 +1,14 @@
 package com.example.app.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.view.View
+import android.view.animation.AccelerateInterpolator
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
 import com.example.app.Direction
@@ -24,10 +27,14 @@ class VisualAlertManager(
     private val arrowAnimators = mutableMapOf<Direction, ValueAnimator>()
     private var iconBreathingAnimator: AnimatorSet? = null
 
+    private var standbyAnimator: AnimatorSet? = null
+
     /**
      * Ponto de entrada principal para exibir um alerta visual completo.
      */
     fun showVisualAlert(direction: Direction, intensity: Int, incomingObject: Objects) {
+        stopActiveStandbyAnimation()
+
         if (direction == Direction.TOP) {
             val translation = 150f
             binding.carImg.translationY = translation
@@ -61,6 +68,85 @@ class VisualAlertManager(
         binding.bottomArrow.translationY = 0f
         childZoneBinding.childZoneNotificationLayout.translationY = 0f
         binding.settingsIcon.visibility = View.VISIBLE
+
+        startActiveStandbyAnimation()
+    }
+
+    fun startActiveStandbyAnimation() {
+        if (standbyAnimator != null) return
+
+        val pulse1 = binding.standbyPulse1
+        val pulse2 = binding.standbyPulse2
+        val pulse3 = binding.standbyPulse3
+
+        pulse1.visibility = View.VISIBLE
+        pulse2.visibility = View.VISIBLE
+        pulse3.visibility = View.VISIBLE
+
+        val animationDuration = 3500L
+        val delayStep = animationDuration / 3
+
+        val animator1 = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(pulse1, "scaleX", 1f, 5f),
+                ObjectAnimator.ofFloat(pulse1, "scaleY", 1f, 5f),
+                ObjectAnimator.ofFloat(pulse1, "alpha", 1f, 0f)
+            )
+            duration = animationDuration
+            interpolator = AccelerateInterpolator()
+        }
+
+        val animator2 = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(pulse2, "scaleX", 1f, 5f),
+                ObjectAnimator.ofFloat(pulse2, "scaleY", 1f, 5f),
+                ObjectAnimator.ofFloat(pulse2, "alpha", 1f, 0f)
+            )
+            duration = animationDuration
+            startDelay = delayStep
+            interpolator = AccelerateInterpolator()
+        }
+
+        val animator3 = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(pulse3, "scaleX", 1f, 5f),
+                ObjectAnimator.ofFloat(pulse3, "scaleY", 1f, 5f),
+                ObjectAnimator.ofFloat(pulse3, "alpha", 1f, 0f)
+            )
+            duration = animationDuration
+            startDelay = delayStep * 2
+            interpolator = AccelerateInterpolator()
+        }
+
+        standbyAnimator = AnimatorSet().apply {
+            playTogether(animator1, animator2, animator3)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (standbyAnimator != null) {
+                        animation.start()
+                    }
+                }
+            })
+            start()
+        }
+    }
+
+    /**
+     * Para e limpa a animação de standby.
+     */
+    fun stopActiveStandbyAnimation() {
+        standbyAnimator?.let {
+            it.removeAllListeners() // Impede que a animação se reinicie
+            it.cancel()
+        }
+        standbyAnimator = null
+        binding.standbyPulse1.visibility = View.GONE
+        binding.standbyPulse2.visibility = View.GONE
+        binding.standbyPulse3.visibility = View.GONE
+        // Reseta as propriedades para o próximo início
+        binding.standbyPulse1.apply { scaleX = 1f; scaleY = 1f; alpha = 1f; }
+        binding.standbyPulse2.apply { scaleX = 1f; scaleY = 1f; alpha = 1f; }
+        binding.standbyPulse3.apply { scaleX = 1f; scaleY = 1f; alpha = 1f; }
     }
 
     /**
@@ -236,5 +322,6 @@ class VisualAlertManager(
         arrowAnimators.values.forEach { it.cancel() }
         arrowAnimators.clear()
         iconBreathingAnimator?.cancel()
+        stopActiveStandbyAnimation()
     }
 }

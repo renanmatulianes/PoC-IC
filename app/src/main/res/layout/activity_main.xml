@@ -7,6 +7,39 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <View
+        android:id="@+id/standbyPulse1"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:background="@drawable/standby_pulse_shape"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <View
+        android:id="@+id/standbyPulse2"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:background="@drawable/standby_pulse_shape"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <View
+        android:id="@+id/standbyPulse3"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:background="@drawable/standby_pulse_shape"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- Carro no centro -->
     <ImageView
         android:id="@+id/carImg"

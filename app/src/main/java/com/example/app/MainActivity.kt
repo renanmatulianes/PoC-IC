@@ -114,10 +114,9 @@ class MainActivity : AppCompatActivity(), NotificationUI {
             priority = PRIORITY_HIGH,
             rootFilter = RiskLevelFilter("high"),
             effects = listOf(
-                StopPreviousAlertsEffect(), // Limpa alertas antigos primeiro
+                StopPreviousAlertsEffect(),
                 VisualNotificationEffect(),
                 SoundNotificationEffect()
-                // Poderíamos adicionar um HapticFeedbackEffect aqui no futuro
             )
         )
 
@@ -142,7 +141,6 @@ class MainActivity : AppCompatActivity(), NotificationUI {
                 StopPreviousAlertsEffect(),
                 VisualNotificationEffect(),
                 SoundNotificationEffect()
-                // Poderíamos ter efeitos diferentes aqui, ex: só visual
             )
         )
 
@@ -152,7 +150,7 @@ class MainActivity : AppCompatActivity(), NotificationUI {
             priority = PRIORITY_ZONE,
             rootFilter = ZoneTypeFilter(ZonaTipo.CRIANCA),
             effects = listOf(
-                StopPreviousAlertsEffect(), // Para o alerta de colisão, se houver
+                StopPreviousAlertsEffect(),
                 ExpiringZoneAlertEffect(ZonaTipo.CRIANCA, durationMs = 10000L)
             )
         )

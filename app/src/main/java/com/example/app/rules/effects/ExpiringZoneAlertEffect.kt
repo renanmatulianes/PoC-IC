@@ -24,7 +24,7 @@ class ExpiringZoneAlertEffect(
         activeRunnable?.let { handler.removeCallbacks(it) }
 
         // Ativa o novo alerta
-        val message = context.timNotification?.dataFrames?.firstOrNull()?.content?.advisoryText
+        val message = context.timNotification?.regions?.firstOrNull()?.name
         ui.showZoneAlert(true, zoneType, message)
         ui.playZoneSound(zoneType)
 

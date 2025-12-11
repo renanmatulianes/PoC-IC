@@ -11,7 +11,7 @@ class ZoneAlertEffect(private val zoneType: ZonaTipo) : Effect {
     override fun apply(context: NotificationContext, ui: NotificationUI) {
         // A lógica de desativação por tempo será tratada de outra forma.
         // O efeito apenas se preocupa em *ativar* o alerta.
-        val message = context.timNotification?.dataFrames?.firstOrNull()?.content?.advisoryText
+        val message = context.timNotification?.regions?.firstOrNull()?.name
         ui.showZoneAlert(true, zoneType, message)
         ui.playZoneSound(zoneType)
     }

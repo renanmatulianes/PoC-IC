@@ -2,23 +2,21 @@ package com.example.app.rules.filters
 
 import com.example.app.ZonaTipo
 import com.example.app.rules.context.NotificationContext
+import android.util.Log
 
-/**
- * Filtro que verifica se uma notificação TIM contém texto
- * que corresponde a um tipo de zona específico.
- */
 class ZoneTypeFilter(private val targetZoneType: ZonaTipo) : Filter {
 
     override fun isMet(context: NotificationContext): Boolean {
-        // Se não houver notificação TIM no contexto, a condição não é atendida.
-        val advisoryText = context.timNotification?.dataFrames?.firstOrNull()?.content?.advisoryText
+        val regionName = context.timNotification?.regions?.firstOrNull()?.name
             ?: return false
 
+        Log.d("ZoneTypeFilter", "Analisando nome da região TIM: '$regionName'")
+
         return when (targetZoneType) {
-            ZonaTipo.CRIANCA -> advisoryText.contains("crianças", ignoreCase = true) ||
-                    advisoryText.contains("escolar", ignoreCase = true)
-            ZonaTipo.CICLISTA -> advisoryText.contains("ciclista", ignoreCase = true) ||
-                    advisoryText.contains("ciclistas", ignoreCase = true)
+            ZonaTipo.CRIANCA -> regionName.contains("escolar", ignoreCase = true) ||
+                    regionName.contains("criança", ignoreCase = true)
+
+            ZonaTipo.CICLISTA -> regionName.contains("ciclista", ignoreCase = true)
         }
     }
 }

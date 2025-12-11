@@ -22,6 +22,7 @@ import java.lang.StringBuilder
 import com.example.app.databinding.ActivityMainBinding
 import com.example.app.databinding.NotificationChildZoneBinding
 import com.example.app.model.TimNotification
+import com.example.app.model.UnifiedNotification
 import com.example.app.rules.effects.NotificationUI
 import com.example.app.rules.Orchestrator
 import com.example.app.rules.Rule
@@ -44,9 +45,6 @@ class MainActivity : AppCompatActivity(), NotificationUI {
     private var shouldReconnect = true
     private val reconnectDelayMs = 15000L
 
-    private var zoneAlertSocket: Socket? = null
-    private var zoneAlertConnectionJob: Job? = null
-
     private lateinit var binding: ActivityMainBinding
     private lateinit var visualAlertManager: VisualAlertManager
 
@@ -54,14 +52,10 @@ class MainActivity : AppCompatActivity(), NotificationUI {
         .addLast(KotlinJsonAdapterFactory())
         .build()
 
-    private val combinedNotificationAdapter = moshi.adapter(CombinedNotification::class.java)
-    private val timNotificationAdapter = moshi.adapter(TimNotification::class.java)
+    private val unifiedNotificationAdapter = moshi.adapter(UnifiedNotification::class.java)
 
-    private val obuServerIp = "10.0.2.2" // 192.168.0.53
-    private val obuServerPort = 3002 // 8080
-
-    private val zoneAlertServerIp = "10.0.2.2"
-    private val zoneAlertServerPort = 3003
+    private val serverIp = "192.168.0.53"
+    private val serverPort = 8080
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,8 +70,7 @@ class MainActivity : AppCompatActivity(), NotificationUI {
         orchestrator = Orchestrator(this)
         setupRules()
 
-        connectToObuServer()
-        connectToZoneAlertServer()
+        connectToServer()
 
         val settingsButton = findViewById<ImageView>(R.id.settingsIcon)
         settingsButton.setOnClickListener {
@@ -91,7 +84,6 @@ class MainActivity : AppCompatActivity(), NotificationUI {
         super.onDestroy()
         shouldReconnect = false
         connectionJob?.cancel()
-        zoneAlertConnectionJob?.cancel()
         try {
             tcpSocket?.close()
         } catch (e: IOException) {
@@ -174,39 +166,32 @@ class MainActivity : AppCompatActivity(), NotificationUI {
 
     }
 
-    private fun connectToObuServer() {
+    private fun connectToServer() {
         connectionJob = lifecycleScope.launch(Dispatchers.IO) {
-
             while (shouldReconnect) {
                 try {
-                    Log.d("TCP", "Tentando conectar a $obuServerIp:$obuServerPort...")
-                    tcpSocket = Socket(obuServerIp, obuServerPort)
-
+                    Log.d("TCP", "Tentando conectar ao servidor unificado em $serverIp:$serverPort...")
+                    tcpSocket = Socket(serverIp, serverPort)
                     withContext(Dispatchers.Main) {
-                        toast("Conectado ao servidor OBU!")
+                        toast("Conectado ao servidor!")
                     }
                     Log.d("TCP", "Conexão estabelecida.")
 
                     val reader = InputStreamReader(tcpSocket!!.getInputStream())
                     val buffer = CharArray(4096)
                     val jsonBuffer = StringBuilder()
-                    var charsRead: Int = 0
+                    var charsRead = 0
 
                     while (tcpSocket!!.isConnected && reader.read(buffer).also { charsRead = it } != -1) {
-
                         jsonBuffer.append(buffer, 0, charsRead)
-
                         while (true) {
                             val startIdx = jsonBuffer.indexOf('{')
-
                             if (startIdx == -1) {
                                 jsonBuffer.clear()
                                 break
                             }
-
                             var braceCount = 0
                             var endIdx = -1
-
                             for (i in startIdx until jsonBuffer.length) {
                                 when (jsonBuffer[i]) {
                                     '{' -> braceCount++
@@ -217,16 +202,11 @@ class MainActivity : AppCompatActivity(), NotificationUI {
                                     break
                                 }
                             }
-
                             if (endIdx != -1) {
-
                                 val completeJson = jsonBuffer.substring(startIdx, endIdx + 1)
-
                                 jsonBuffer.delete(0, endIdx + 1)
 
-                                //Log.d("TCP", "JSON completo extraído: $completeJson")
-                                processObuMessage(completeJson)
-
+                                processUnifiedMessage(completeJson)
                             } else {
                                 break
                             }
@@ -250,116 +230,34 @@ class MainActivity : AppCompatActivity(), NotificationUI {
         }
     }
 
-    private suspend fun processObuMessage(jsonString: String) {
-        val combinedNotification = try {
-            combinedNotificationAdapter.fromJson(jsonString)
+    private suspend fun processUnifiedMessage(jsonString: String) {
+        val unifiedMessage = try {
+            unifiedNotificationAdapter.fromJson(jsonString)
         } catch (e: Exception) {
-            Log.e("JSON", "Erro ao fazer o parsing do JSON (OBU): $jsonString", e)
-            return // Sai se o JSON for inválido
+            Log.e("JSON", "Erro ao fazer o parsing do JSON unificado: $jsonString", e)
+            return
         }
 
-        combinedNotification?.let { notifData ->
-            val appNotification = combinedToAppNotification(notifData)
+        unifiedMessage?.let { msg ->
+            var appNotification: com.example.app.model.Notification? = null
 
-            val context = NotificationContext(psmBsmNotification = appNotification)
+            // Verifica se a mensagem contém dados de colisão (BSM+PSM)
+            if (msg.bsm != null && msg.psm != null) {
+                val combined = CombinedNotification(msg.psm, msg.bsm)
+                appNotification = combinedToAppNotification(combined)
+            }
 
+            val timNotification = msg.tim
+
+            val context = NotificationContext(
+                psmBsmNotification = appNotification,
+                timNotification = timNotification
+            )
+
+            // Entrega o contexto completo para o Orquestradort
             withContext(Dispatchers.Main) {
                 orchestrator.processContext(context)
             }
-        }
-    }
-
-    private fun connectToZoneAlertServer() {
-        zoneAlertConnectionJob = lifecycleScope.launch(Dispatchers.IO) {
-            while (shouldReconnect) {
-                try {
-                    Log.d("TCP_Zone", "Tentando conectar a $zoneAlertServerIp:$zoneAlertServerPort...")
-                    zoneAlertSocket = Socket(zoneAlertServerIp, zoneAlertServerPort)
-
-                    withContext(Dispatchers.Main) {
-                        toast("Conectado ao servidor de Alertas de Zona!")
-                    }
-                    Log.d("TCP_Zone", "Conexão de Alertas de Zona estabelecida.")
-
-                    val reader = InputStreamReader(zoneAlertSocket!!.getInputStream())
-                    val buffer = CharArray(4096)
-                    val jsonBuffer = StringBuilder()
-                    var charsRead: Int = 0
-
-                    while (zoneAlertSocket!!.isConnected && reader.read(buffer).also { charsRead = it } != -1) {
-                        jsonBuffer.append(buffer, 0, charsRead)
-
-                        while (true) {
-                            val startIdx = jsonBuffer.indexOf('{')
-
-                            if (startIdx == -1) {
-                                jsonBuffer.clear()
-                                break
-                            }
-
-                            var braceCount = 0
-                            var endIdx = -1
-
-                            for (i in startIdx until jsonBuffer.length) {
-                                when (jsonBuffer[i]) {
-                                    '{' -> braceCount++
-                                    '}' -> braceCount--
-                                }
-                                if (braceCount == 0) {
-                                    endIdx = i
-                                    break
-                                }
-                            }
-
-                            if (endIdx != -1) {
-
-                                val completeJson = jsonBuffer.substring(startIdx, endIdx + 1)
-
-                                jsonBuffer.delete(0, endIdx + 1)
-
-                                Log.d("TCP", "JSON completo extraído: $completeJson")
-                                processZoneAlertMessage(completeJson)
-
-                            } else {
-                                break
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    if (!shouldReconnect) break
-                    Log.e("TCP_Zone", "Erro de conexão com servidor de Alertas: ${e.message}")
-                    withContext(Dispatchers.Main) {
-                        toast("Erro nos Alertas de Zona. Reconectando...")
-                    }
-                    delay(reconnectDelayMs)
-                } finally {
-                    try {
-                        zoneAlertSocket?.close()
-                    } catch (e: IOException) {
-                        // Log do erro
-                    }
-                }
-            }
-        }
-    }
-
-    private suspend fun processZoneAlertMessage(jsonString: String) {
-        val timNotification = try {
-            timNotificationAdapter.fromJson(jsonString)
-        } catch (e: Exception) {
-            Log.e("JSON_TIM", "Erro ao fazer o parsing do JSON de Alerta de Zona: $jsonString", e)
-            return // Sai se o JSON for inválido
-        }
-
-        timNotification?.let {
-            // 1. Cria o contexto com a notificação TIM.
-            val context = NotificationContext(timNotification = it)
-
-            // 2. Entrega ao orquestrador.
-            withContext(Dispatchers.Main) {
-                orchestrator.processContext(context)
-            }
-
         }
     }
 

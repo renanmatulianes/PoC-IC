@@ -52,11 +52,40 @@ class VisualAlertManager(
         if (incomingObject != Objects.NULL) showObject(direction, incomingObject)
     }
 
+    fun showCombinedVisualAlert(
+        direction: Direction,
+        intensity: Int,
+        incomingObject: Objects,
+        zoneType: ZonaTipo
+    ) {
+        // 1. Exibe a placa de zona primeiro
+        displayZoneAlert(true, zoneType, null)
+
+        // 2. Executa a lógica de translação do carro (sem esconder a placa)
+        if (direction == Direction.TOP) {
+            val translation = 150f
+            binding.carImg.translationY = translation
+            binding.topArrow.translationY = translation
+            childZoneBinding.childZoneNotificationLayout.translationY = translation
+        } else if (direction == Direction.BOTTOM) {
+            val translation = -150f
+            binding.carImg.translationY = translation
+            binding.bottomArrow.translationY = translation
+            childZoneBinding.childZoneNotificationLayout.translationY = translation
+        }
+
+        // 3. Exibe os componentes do alerta de colisão
+        startArrowBlink(direction, intensity)
+        if (intensity != -1) startPulse(direction, intensity)
+        if (incomingObject != Objects.NULL) showObject(direction, incomingObject)
+    }
+
     /**
      * Para e esconde todos os elementos visuais de alerta de todas as direções,
      * garantindo que a UI retorne a um estado limpo.
      */
     fun stopAllVisuals() {
+        displayZoneAlert(false, ZonaTipo.CRIANCA, null)
         listOf(Direction.TOP, Direction.BOTTOM, Direction.LEFT, Direction.RIGHT).forEach { dir ->
             stopPulse(dir)
             stopArrowBlink(dir)

@@ -95,10 +95,56 @@ class MainActivity : AppCompatActivity(), NotificationUI {
 
     private fun setupRules() {
 
+        val PRIORITY_COMBINED = 40
         val PRIORITY_HIGH = 30
         val PRIORITY_MEDIUM = 20
         val PRIORITY_LOW = 10
         val PRIORITY_ZONE = 30
+
+        // REGRA A: Colisão de ALTO Risco DENTRO de uma Zona Escolar
+        val highRiskChildZoneRule = Rule(
+            name = "High Risk Collision in Child Zone",
+            priority = PRIORITY_COMBINED,
+            rootFilter = AndFilter( // Usa AndFilter para combinar as duas condições
+                RiskLevelFilter("high"),
+                ZoneTypeFilter(ZonaTipo.CRIANCA)
+            ),
+            effects = listOf(
+                StopPreviousAlertsEffect(),
+                CombinedVisualEffect(ZonaTipo.CRIANCA),
+                CombinedSoundEffect(ZonaTipo.CRIANCA)
+            )
+        )
+
+        // REGRA B: Colisão de MÉDIO Risco DENTRO de uma Zona Escolar
+        val mediumRiskChildZoneRule = Rule(
+            name = "Medium Risk Collision in Child Zone",
+            priority = PRIORITY_COMBINED,
+            rootFilter = AndFilter(
+                RiskLevelFilter("medium"),
+                ZoneTypeFilter(ZonaTipo.CRIANCA)
+            ),
+            effects = listOf(
+                StopPreviousAlertsEffect(),
+                CombinedVisualEffect(ZonaTipo.CRIANCA),
+                CombinedSoundEffect(ZonaTipo.CRIANCA)
+            )
+        )
+
+        // REGRA C: Colisão de BAIXO Risco DENTRO de uma Zona Escolar
+        val lowRiskChildZoneRule = Rule(
+            name = "Low Risk Collision in Child Zone",
+            priority = PRIORITY_COMBINED,
+            rootFilter = AndFilter(
+                RiskLevelFilter("low"),
+                ZoneTypeFilter(ZonaTipo.CRIANCA)
+            ),
+            effects = listOf(
+                StopPreviousAlertsEffect(),
+                CombinedVisualEffect(ZonaTipo.CRIANCA),
+                CombinedSoundEffect(ZonaTipo.CRIANCA)
+            )
+        )
 
         // --- REGRA 1: ALERTA DE COLISÃO DE ALTO RISCO ---
         val highRiskRule = Rule(
@@ -158,6 +204,9 @@ class MainActivity : AppCompatActivity(), NotificationUI {
             )
         )
 
+        orchestrator.addRule(highRiskChildZoneRule)
+        orchestrator.addRule(mediumRiskChildZoneRule)
+        orchestrator.addRule(lowRiskChildZoneRule)
         orchestrator.addRule(highRiskRule)
         orchestrator.addRule(mediumRiskRule)
         orchestrator.addRule(lowRiskRule)
@@ -256,6 +305,7 @@ class MainActivity : AppCompatActivity(), NotificationUI {
 
             // Entrega o contexto completo para o Orquestradort
             withContext(Dispatchers.Main) {
+                Log.d("Notif", context.toString())
                 orchestrator.processContext(context)
             }
         }
@@ -271,6 +321,10 @@ class MainActivity : AppCompatActivity(), NotificationUI {
 
     override fun showZoneAlert(activate: Boolean, zoneType: ZonaTipo, message: String?) {
         visualAlertManager.displayZoneAlert(activate, zoneType, message)
+    }
+
+    override fun showCombinedVisualAlert(direction: Direction, intensity: Int, obj: Objects, zoneType: ZonaTipo) {
+        visualAlertManager.showCombinedVisualAlert(direction, intensity, obj, zoneType)
     }
 
     override fun playZoneSound(zoneType: ZonaTipo) {

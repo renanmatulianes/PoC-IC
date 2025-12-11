@@ -15,4 +15,5 @@ interface NotificationUI {
     fun stopAllAlerts()
     fun showZoneAlert(activate: Boolean, zoneType: ZonaTipo, message: String?)
     fun playZoneSound(zoneType: ZonaTipo)
+    fun showCombinedVisualAlert(direction: Direction, intensity: Int, obj: Objects, zoneType: ZonaTipo)
 }

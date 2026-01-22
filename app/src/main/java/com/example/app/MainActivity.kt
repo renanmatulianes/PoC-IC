@@ -57,6 +57,10 @@ class MainActivity : AppCompatActivity(), NotificationUI {
     private val serverIp = "192.168.0.53"
     private val serverPort = 8080
 
+    private var psmPart: String? = null
+    private var bsmPart: String? = null
+    private var timPart: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -77,7 +81,6 @@ class MainActivity : AppCompatActivity(), NotificationUI {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
-//        alerta_zona(true, ZonaTipo.CICLISTA, "Atenção: Área escolar próxima")
     }
 
     override fun onDestroy() {
@@ -221,43 +224,40 @@ class MainActivity : AppCompatActivity(), NotificationUI {
                 try {
                     Log.d("TCP", "Tentando conectar ao servidor unificado em $serverIp:$serverPort...")
                     tcpSocket = Socket(serverIp, serverPort)
-                    withContext(Dispatchers.Main) {
-                        toast("Conectado ao servidor!")
-                    }
+                    withContext(Dispatchers.Main) { toast("Conectado ao servidor!") }
                     Log.d("TCP", "Conexão estabelecida.")
 
                     val reader = InputStreamReader(tcpSocket!!.getInputStream())
                     val buffer = CharArray(4096)
-                    val jsonBuffer = StringBuilder()
-                    var charsRead = 0
+                    val jsonBuilder = StringBuilder()
+                    var braceCount = 0
+                    var isInsideJson = false
+                    var charsRead: Int = 0
 
                     while (tcpSocket!!.isConnected && reader.read(buffer).also { charsRead = it } != -1) {
-                        jsonBuffer.append(buffer, 0, charsRead)
-                        while (true) {
-                            val startIdx = jsonBuffer.indexOf('[')
-                            if (startIdx == -1) {
-                                jsonBuffer.clear()
-                                break
-                            }
-                            var braceCount = 0
-                            var endIdx = -1
-                            for (i in startIdx until jsonBuffer.length) {
-                                when (jsonBuffer[i]) {
-                                    '[' -> braceCount++
-                                    ']' -> braceCount--
+                        for (i in 0 until charsRead) {
+                            val char = buffer[i]
+                            if (!isInsideJson) {
+                                if (char == '{') {
+                                    isInsideJson = true
+                                    braceCount = 1
+                                    jsonBuilder.append(char)
                                 }
-                                if (braceCount == 0) {
-                                    endIdx = i
-                                    break
-                                }
-                            }
-                            if (endIdx != -1) {
-                                val completeJson = jsonBuffer.substring(startIdx, endIdx + 1)
-                                jsonBuffer.delete(0, endIdx + 1)
-
-                                processJsonArray(completeJson)
                             } else {
-                                break
+                                jsonBuilder.append(char)
+                                if (char == '{') {
+                                    braceCount++
+                                } else if (char == '}') {
+                                    braceCount--
+                                }
+
+                                if (braceCount == 0) {
+                                    val jsonChunk = jsonBuilder.toString()
+                                    jsonBuilder.clear()
+                                    isInsideJson = false
+
+                                    processJsonChunk(jsonChunk)
+                                }
                             }
                         }
                     }
@@ -279,70 +279,97 @@ class MainActivity : AppCompatActivity(), NotificationUI {
         }
     }
 
-    private suspend fun processJsonArray(jsonArrayString: String) {
+    private suspend fun processJsonChunk(jsonChunk: String) {
         try {
-            val listType = com.squareup.moshi.Types.newParameterizedType(List::class.java, Map::class.java)
-            val jsonAdapter = moshi.adapter<List<Map<String, Any>>>(listType)
+            val unifiedMessage = unifiedNotificationAdapter.fromJson(jsonChunk)
+            if (unifiedMessage != null && (unifiedMessage.bsm != null || unifiedMessage.psm != null || unifiedMessage.tim != null)) {
+                Log.i("TCP_PARSER", ">>> Mensagem UNIFICADA completa recebida e processada! <<<")
+                psmPart = null; bsmPart = null; timPart = null
+                processCompleteMessage(unifiedMessage)
+                return
+            }
+        } catch (e: Exception) {
+            Log.d("TCP_PARSER", "Não é um JSON unificado, tratando como fragmento.")
+        }
 
-            val parsedList = jsonAdapter.fromJson(jsonArrayString) ?: return
+        var fragmentFound = false
+        try {
+            val mapAdapter = moshi.adapter<Map<String, Any>>(Map::class.java)
+            val parsedChunk = mapAdapter.fromJson(jsonChunk)
 
-            var bsmJson: String? = null
-            var psmJson: String? = null
-            var timJson: String? = null
-
-            for (item in parsedList) {
+            if (parsedChunk != null) {
                 when {
-                    item.containsKey("bsm") -> bsmJson = moshi.adapter(Any::class.java).toJson(item["bsm"])
-                    item.containsKey("psm") -> psmJson = moshi.adapter(Any::class.java).toJson(item["psm"])
-                    item.containsKey("tim") -> timJson = moshi.adapter(Any::class.java).toJson(item["tim"])
+                    parsedChunk.containsKey("psm") -> {
+                        Log.d("TCP_PARSER", "Fragmento PSM (envelopado) identificado e armazenado.")
+                        val psmObject = parsedChunk["psm"]
+                        psmPart = moshi.adapter(Any::class.java).toJson(psmObject)
+                        fragmentFound = true
+                    }
+
+                    parsedChunk.containsKey("coreData") && parsedChunk.containsKey("messageId") -> {
+                        Log.d("TCP_PARSER", "Fragmento BSM identificado e armazenado.")
+                        bsmPart = jsonChunk
+                        fragmentFound = true
+                    }
+                    parsedChunk.containsKey("regions") && parsedChunk.containsKey("msgId") -> {
+                        Log.d("TCP_PARSER", "Fragmento TIM identificado e armazenado.")
+                        timPart = jsonChunk
+                        fragmentFound = true
+                    }
                 }
             }
+        } catch (e: Exception) {
+            Log.e("TCP_PARSER", "Erro ao analisar fragmento JSON: $jsonChunk", e)
+        }
+
+
+        if (!fragmentFound) {
+            Log.w("TCP_PARSER", "Pedaço de JSON não identificado: $jsonChunk")
+        }
+
+        if (psmPart != null && bsmPart != null && timPart != null) {
+            Log.i("TCP_PARSER", ">>> Todos os 3 FRAGMENTOS recebidos! Montando mensagem unificada. <<<")
 
             val unifiedJsonString = """
-                {
-                    "bsm": ${bsmJson ?: "null"},
-                    "psm": ${psmJson ?: "null"},
-                    "tim": ${timJson ?: "null"}
-                }
-            """.trimIndent()
+            {
+                "psm": $psmPart,
+                "bsm": $bsmPart,
+                "tim": $timPart
+            }
+        """.trimIndent()
 
-            processUnifiedMessage(unifiedJsonString)
+            psmPart = null; bsmPart = null; timPart = null
 
-        } catch (e: Exception) {
-            Log.e("JSON", "Erro ao processar o array JSON: $jsonArrayString", e)
+            val unifiedMessage = try {
+                unifiedNotificationAdapter.fromJson(unifiedJsonString)
+            } catch (e: Exception) {
+                Log.e("JSON", "Erro ao fazer o parsing do JSON montado a partir de fragmentos.", e)
+                null
+            }
+
+            if (unifiedMessage != null) {
+                processCompleteMessage(unifiedMessage)
+            }
         }
     }
 
-    private suspend fun processUnifiedMessage(jsonString: String) {
-        Log.e("JSONstr", jsonString)
-        val unifiedMessage = try {
-            unifiedNotificationAdapter.fromJson(jsonString)
-        } catch (e: Exception) {
-            Log.e("JSON", "Erro ao fazer o parsing do JSON unificado: $jsonString", e)
-            return
+    private suspend fun processCompleteMessage(message: UnifiedNotification) {
+        var appNotification: com.example.app.model.Notification? = null
+
+        if (message.bsm != null && message.psm != null) {
+            val combined = CombinedNotification(message.psm, message.bsm)
+            appNotification = combinedToAppNotification(combined)
         }
 
-        unifiedMessage?.let { msg ->
-            var appNotification: com.example.app.model.Notification? = null
+        val timNotification = message.tim
 
-            // Verifica se a mensagem contém dados de colisão (BSM+PSM)
-            if (msg.bsm != null && msg.psm != null) {
-                val combined = CombinedNotification(msg.psm, msg.bsm)
-                appNotification = combinedToAppNotification(combined)
-            }
+        val context = NotificationContext(
+            psmBsmNotification = appNotification,
+            timNotification = timNotification
+        )
 
-            val timNotification = msg.tim
-
-            val context = NotificationContext(
-                psmBsmNotification = appNotification,
-                timNotification = timNotification
-            )
-
-            // Entrega o contexto completo para o Orquestradort
-            withContext(Dispatchers.Main) {
-                Log.d("Notif", context.toString())
-                orchestrator.processContext(context)
-            }
+        withContext(Dispatchers.Main) {
+            orchestrator.processContext(context)
         }
     }
 

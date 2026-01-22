@@ -234,7 +234,7 @@ class MainActivity : AppCompatActivity(), NotificationUI {
                     while (tcpSocket!!.isConnected && reader.read(buffer).also { charsRead = it } != -1) {
                         jsonBuffer.append(buffer, 0, charsRead)
                         while (true) {
-                            val startIdx = jsonBuffer.indexOf('{')
+                            val startIdx = jsonBuffer.indexOf('[')
                             if (startIdx == -1) {
                                 jsonBuffer.clear()
                                 break
@@ -243,8 +243,8 @@ class MainActivity : AppCompatActivity(), NotificationUI {
                             var endIdx = -1
                             for (i in startIdx until jsonBuffer.length) {
                                 when (jsonBuffer[i]) {
-                                    '{' -> braceCount++
-                                    '}' -> braceCount--
+                                    '[' -> braceCount++
+                                    ']' -> braceCount--
                                 }
                                 if (braceCount == 0) {
                                     endIdx = i
@@ -255,7 +255,7 @@ class MainActivity : AppCompatActivity(), NotificationUI {
                                 val completeJson = jsonBuffer.substring(startIdx, endIdx + 1)
                                 jsonBuffer.delete(0, endIdx + 1)
 
-                                processUnifiedMessage(completeJson)
+                                processJsonArray(completeJson)
                             } else {
                                 break
                             }
@@ -279,7 +279,42 @@ class MainActivity : AppCompatActivity(), NotificationUI {
         }
     }
 
+    private suspend fun processJsonArray(jsonArrayString: String) {
+        try {
+            val listType = com.squareup.moshi.Types.newParameterizedType(List::class.java, Map::class.java)
+            val jsonAdapter = moshi.adapter<List<Map<String, Any>>>(listType)
+
+            val parsedList = jsonAdapter.fromJson(jsonArrayString) ?: return
+
+            var bsmJson: String? = null
+            var psmJson: String? = null
+            var timJson: String? = null
+
+            for (item in parsedList) {
+                when {
+                    item.containsKey("bsm") -> bsmJson = moshi.adapter(Any::class.java).toJson(item["bsm"])
+                    item.containsKey("psm") -> psmJson = moshi.adapter(Any::class.java).toJson(item["psm"])
+                    item.containsKey("tim") -> timJson = moshi.adapter(Any::class.java).toJson(item["tim"])
+                }
+            }
+
+            val unifiedJsonString = """
+                {
+                    "bsm": ${bsmJson ?: "null"},
+                    "psm": ${psmJson ?: "null"},
+                    "tim": ${timJson ?: "null"}
+                }
+            """.trimIndent()
+
+            processUnifiedMessage(unifiedJsonString)
+
+        } catch (e: Exception) {
+            Log.e("JSON", "Erro ao processar o array JSON: $jsonArrayString", e)
+        }
+    }
+
     private suspend fun processUnifiedMessage(jsonString: String) {
+        Log.e("JSONstr", jsonString)
         val unifiedMessage = try {
             unifiedNotificationAdapter.fromJson(jsonString)
         } catch (e: Exception) {

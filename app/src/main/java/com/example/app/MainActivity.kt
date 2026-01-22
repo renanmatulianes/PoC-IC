@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity(), NotificationUI {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
+        orchestrator.start()
     }
 
     override fun onDestroy() {
@@ -306,7 +307,7 @@ class MainActivity : AppCompatActivity(), NotificationUI {
                         fragmentFound = true
                     }
 
-                    parsedChunk.containsKey("coreData") && parsedChunk.containsKey("messageId") -> {
+                    parsedChunk.containsKey("messageId") -> {
                         Log.d("TCP_PARSER", "Fragmento BSM identificado e armazenado.")
                         bsmPart = jsonChunk
                         fragmentFound = true

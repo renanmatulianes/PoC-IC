@@ -16,6 +16,10 @@ class Orchestrator(private val ui: NotificationUI) {
     private var activeRule: Rule? = null
     private var cleanupRunnable: Runnable? = null
 
+    fun start() {
+        clearActiveNotification()
+    }
+
     fun addRule(rule: Rule) {
         rules.add(rule)
         rules.sortByDescending { it.priority }

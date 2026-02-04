@@ -46,6 +46,9 @@ class MainActivity : AppCompatActivity(), NotificationUI {
     private var shouldReconnect = true
     private val reconnectDelayMs = 15000L
 
+    private var lastTriggerTimestamp: Long = 0
+    private val triggerCooldownMs: Long = 2000
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var visualAlertManager: VisualAlertManager
 
@@ -230,37 +233,23 @@ class MainActivity : AppCompatActivity(), NotificationUI {
                     Log.d("TCP", "Conexão estabelecida.")
 
                     val reader = InputStreamReader(tcpSocket!!.getInputStream())
-                    val buffer = CharArray(4096)
-                    val jsonBuilder = StringBuilder()
-                    var braceCount = 0
-                    var isInsideJson = false
-                    var charsRead: Int = 0
+                    val buffer = CharArray(1)
 
-                    while (tcpSocket!!.isConnected && reader.read(buffer).also { charsRead = it } != -1) {
-                        for (i in 0 until charsRead) {
-                            val char = buffer[i]
-                            if (!isInsideJson) {
-                                if (char == '{') {
-                                    isInsideJson = true
-                                    braceCount = 1
-                                    jsonBuilder.append(char)
-                                }
-                            } else {
-                                jsonBuilder.append(char)
-                                if (char == '{') {
-                                    braceCount++
-                                } else if (char == '}') {
-                                    braceCount--
-                                }
+                    while (tcpSocket!!.isConnected && reader.read(buffer) != -1) {
 
-                                if (braceCount == 0) {
-                                    val jsonChunk = jsonBuilder.toString()
-                                    jsonBuilder.clear()
-                                    isInsideJson = false
+                        val currentTime = System.currentTimeMillis()
 
-                                    processJsonChunk(jsonChunk)
-                                }
+                        if (currentTime - lastTriggerTimestamp > triggerCooldownMs) {
+                            Log.d("TCP", "Dados recebidos e cooldown expirado. Acionando notificação.")
+
+                            lastTriggerTimestamp = currentTime
+
+                            withContext(Dispatchers.Main) {
+                                val dummyMessage = UnifiedNotification(bsm = null, psm = null, tim = null)
+                                processCompleteMessage(dummyMessage)
                             }
+                        } else {
+                            Log.v("TCP", "Dados recebidos, mas em cooldown. Ignorando.")
                         }
                     }
                 } catch (e: Exception) {

@@ -21,6 +21,7 @@ import java.io.IOException
 import java.lang.StringBuilder
 import com.example.app.databinding.ActivityMainBinding
 import com.example.app.databinding.NotificationChildZoneBinding
+import com.example.app.model.Region
 import com.example.app.model.TimNotification
 import com.example.app.model.UnifiedNotification
 import com.example.app.rules.effects.NotificationUI
@@ -354,23 +355,71 @@ class MainActivity : AppCompatActivity(), NotificationUI {
         }
     }
 
-    private suspend fun processCompleteMessage(message: UnifiedNotification) {
-        var appNotification: com.example.app.model.Notification? = null
-
-        if (message.bsm != null && message.psm != null) {
-            val combined = CombinedNotification(message.psm, message.bsm)
-            appNotification = combinedToAppNotification(combined)
-        }
-
-        val timNotification = message.tim
-
-        val context = NotificationContext(
-            psmBsmNotification = appNotification,
-            timNotification = timNotification
+    private fun createFixedTestContext(): NotificationContext {
+        val fixedCollisionNotification = com.example.app.model.Notification(
+            driver_data = com.example.app.model.Notification.Driver(
+                object_id = "test-pedestrian",
+                risk_level = "high",
+                object_direction = "right",
+                object_type = "human",
+                object_coordinates = com.example.app.model.Notification.Coordinates(
+                    latitude = 0.0,
+                    longitude = 0.0
+                )
+            ),
+            location = com.example.app.model.Notification.Location(
+                latitude = 0.0,
+                longitude = 0.0
+            ),
+            driver_speed = 10.0f,
+            timestamp = "2024-01-01T00:00:00Z"
         )
 
+        val fixedTimNotification = TimNotification(
+            msgId = null,
+            startTime = null,
+            durationTime = null,
+            priority = null,
+            regions = listOf(
+                Region(
+                    name = "zona escolar",
+                    id = null,
+                    description = null
+                )
+            )
+        )
+
+        return NotificationContext(
+            psmBsmNotification = fixedCollisionNotification,
+            timNotification = fixedTimNotification
+        )
+    }
+
+    private suspend fun processCompleteMessage(message: UnifiedNotification) {
+//        var appNotification: com.example.app.model.Notification? = null
+//
+//        if (message.bsm != null && message.psm != null) {
+//            val combined = CombinedNotification(message.psm, message.bsm)
+//            appNotification = combinedToAppNotification(combined)
+//        }
+//
+//        val timNotification = message.tim
+//
+//        val context = NotificationContext(
+//            psmBsmNotification = appNotification,
+//            timNotification = timNotification
+//        )
+//
+//        withContext(Dispatchers.Main) {
+//            orchestrator.processContext(context)
+//        }
+
+        val testContext = createFixedTestContext()
+        Log.d("TEST", "Ignorando mensagem recebida. Usando contexto de teste fixo: $testContext")
+
+
         withContext(Dispatchers.Main) {
-            orchestrator.processContext(context)
+            orchestrator.processContext(testContext) // Envia o contexto fixo para o Orchestrator
         }
     }
 
